@@ -80,6 +80,7 @@ nav{
   padding:0 28px;height:58px;
   background:rgba(8,8,8,0.92);backdrop-filter:blur(14px);
   border-bottom:1px solid var(--border);
+  flex-wrap:nowrap;overflow:hidden;
 }
 .nav-logo{font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:3px;color:#fff;text-decoration:none}
 .nav-logo span{color:var(--red)}
@@ -150,8 +151,9 @@ nav{
 .nav-overlay-socials svg{width:16px;height:16px;fill:currentColor}
 
 @media(max-width:820px){
-  .nav-links{display:none}
-  .nav-burger{display:flex}
+  .nav-links{display:none!important}
+  .nav-burger{display:flex!important}
+  nav{padding:0 16px 0 20px}
 }
 @media(min-width:821px){
   .nav-overlay{display:none!important}
