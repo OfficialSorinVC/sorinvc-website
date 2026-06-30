@@ -37,7 +37,7 @@
 <meta property="og:url" content="https://www.sorinvc.com/"/>
 <meta property="og:title" content="SorinVC — Chicago Creator, Gamer &amp; SYFER Brand"/>
 <meta property="og:description" content="SorinVC — Chicago creator, car enthusiast, gamer, and founder of SYFER. Survivor. Streamer. Building something real."/>
-<meta property="og:image" content="img/misc/sorinvc-logo-og.jpg"/>
+<meta property="og:image" content="https://www.sorinvc.com/img/misc/og-banner.jpg"/>
 <meta property="og:image:alt" content="SorinVC — Chicago creator, gamer and SYFER brand founder"/>
 <meta property="og:image:width" content="1200"/>
 <meta property="og:image:height" content="630"/>
@@ -50,7 +50,7 @@
 <meta name="twitter:creator" content="@SorinVC"/>
 <meta name="twitter:title" content="SorinVC — Chicago Creator, Gamer &amp; SYFER Brand"/>
 <meta name="twitter:description" content="SorinVC — Chicago creator, car enthusiast, gamer, and founder of SYFER. Survivor. Streamer. Building something real."/>
-<meta name="twitter:image" content="img/misc/sorinvc-logo-og.jpg"/>
+<meta name="twitter:image" content="https://www.sorinvc.com/img/misc/og-banner.jpg"/>
 
 <!-- Schema.org structured data — helps Google show your social links in search results -->
 <script type="application/ld+json">
@@ -59,7 +59,7 @@
   "@type": "Person",
   "name": "SorinVC",
   "url": "https://www.sorinvc.com",
-  "image": "img/misc/sorinvc-logo-og.jpg",
+  "image": "https://www.sorinvc.com/img/misc/og-banner.jpg",
   "description": "Chicago-based content creator, car enthusiast, gamer, and founder of SYFER clothing brand. GTA 6 streamer. Hit-and-run survivor who rebuilt from scratch.",
   "jobTitle": "Content Creator",
   "knowsAbout": ["Gaming", "Automotive", "Streaming", "Streetwear", "GTA 6"],
@@ -2247,15 +2247,17 @@ document.addEventListener('keydown',function(e){
 
     <!-- Mailchimp embed form — replace ACTION URL with your Mailchimp list URL -->
     <div style="max-width:480px;margin:0 auto">
-      <form id="notifyForm" style="display:flex;flex-direction:column;gap:12px">
+      <form id="notifyForm" name="notify" method="POST" data-netlify="true" netlify-honeypot="nf-bot-field" style="display:flex;flex-direction:column;gap:12px">
+        <input type="hidden" name="form-name" value="notify"/>
+        <p style="display:none"><label>Don't fill this out: <input name="nf-bot-field"/></label></p>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
-          <input type="text" id="nfName" placeholder="Your name"
+          <input type="text" id="nfName" name="name" placeholder="Your name"
             style="flex:1;min-width:140px;background:var(--surface);border:1px solid var(--border);
                    border-radius:3px;padding:13px 16px;font-family:'Inter',sans-serif;
                    font-size:14px;color:#fff;outline:none;transition:border-color .2s"
             onfocus="this.style.borderColor='rgba(255,1,0,0.5)'"
             onblur="this.style.borderColor='var(--border)'"/>
-          <input type="email" id="nfEmail" placeholder="Your email address" required
+          <input type="email" id="nfEmail" name="email" placeholder="Your email address" required
             style="flex:2;min-width:200px;background:var(--surface);border:1px solid var(--border);
                    border-radius:3px;padding:13px 16px;font-family:'Inter',sans-serif;
                    font-size:14px;color:#fff;outline:none;transition:border-color .2s"
@@ -2325,15 +2327,17 @@ document.addEventListener('keydown',function(e){
         <div class="contact-note">Whether it's a collab, brand deal, or just to say what's up — drop a message and I'll get back to you.</div>
       </div>
       <div>
-        <form class="contact-form" id="contactForm">
+        <form class="contact-form" id="contactForm" name="contact" method="POST" data-netlify="true" netlify-honeypot="cf-bot-field">
+          <input type="hidden" name="form-name" value="contact"/>
+          <p style="display:none"><label>Don't fill this out: <input name="cf-bot-field"/></label></p>
           <div class="form-row">
-            <div class="field"><label for="fname">First Name</label><input type="text" id="fname" placeholder="John" required/></div>
-            <div class="field"><label for="lname">Last Name</label><input type="text" id="lname" placeholder="Doe"/></div>
+            <div class="field"><label for="fname">First Name</label><input type="text" id="fname" name="firstName" placeholder="John" required/></div>
+            <div class="field"><label for="lname">Last Name</label><input type="text" id="lname" name="lastName" placeholder="Doe"/></div>
           </div>
-          <div class="field"><label for="email">Email Address</label><input type="email" id="email" placeholder="you@example.com" required/></div>
+          <div class="field"><label for="email">Email Address</label><input type="email" id="email" name="email" placeholder="you@example.com" required/></div>
           <div class="field">
             <label for="subject">Subject</label>
-            <select id="subject">
+            <select id="subject" name="subject">
               <option value="" disabled selected>Select a topic...</option>
               <option value="collab">Collab / Partnership</option>
               <option value="brand">Brand Deal / Sponsorship</option>
@@ -2342,7 +2346,7 @@ document.addEventListener('keydown',function(e){
               <option value="general">General</option>
             </select>
           </div>
-          <div class="field"><label for="message">Message</label><textarea id="message" placeholder="What's on your mind..." required></textarea></div>
+          <div class="field"><label for="message">Message</label><textarea id="message" name="message" placeholder="What's on your mind..." required></textarea></div>
           <button type="submit" class="submit-btn">Send Message<svg viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></button>
         </form>
         <div class="form-success" id="formSuccess">
@@ -2458,13 +2462,24 @@ document.addEventListener('keydown',function(e){
   requestAnimationFrame(draw);
 })();
 
-document.getElementById('contactForm').addEventListener('submit',function(e){
+document.getElementById('contactForm').addEventListener('submit', function(e){
   e.preventDefault();
-  const fn=document.getElementById('fname').value.trim(),ln=document.getElementById('lname').value.trim(),em=document.getElementById('email').value.trim(),su=document.getElementById('subject').value,ms=document.getElementById('message').value.trim();
-  const sub=encodeURIComponent('[SorinVC.com] '+(su||'Message')+' from '+fn+' '+ln);
-  const bod=encodeURIComponent('From: '+fn+' '+ln+'\nEmail: '+em+'\nSubject: '+su+'\n\n'+ms);
-  window.location.href='mailto:Contact@SorinVC.com?subject='+sub+'&body='+bod;
-  setTimeout(function(){document.getElementById('contactForm').style.display='none';document.getElementById('formSuccess').style.display='block';},800);
+  const form = e.target;
+  const data = new FormData(form);
+
+  fetch('/', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams(data).toString()
+  })
+  .then(function(){
+    form.style.display = 'none';
+    document.getElementById('formSuccess').style.display = 'block';
+  })
+  .catch(function(err){
+    console.error('Form submission error:', err);
+    alert("Something went wrong sending your message. Please email Contact@SorinVC.com directly.");
+  });
 });
 </script>
 
@@ -2504,27 +2519,25 @@ document.getElementById('contactForm').addEventListener('submit',function(e){
   setInterval(tick, 1000);
 })();
 
-// ── EMAIL NOTIFY FORM ──
+// ── EMAIL NOTIFY FORM — submits to Netlify Forms ──
 document.getElementById('notifyForm').addEventListener('submit', function(e){
   e.preventDefault();
-  const name  = document.getElementById('nfName').value.trim();
-  const email = document.getElementById('nfEmail').value.trim();
-  const boxes = document.querySelectorAll('input[name="interest"]:checked');
-  const interests = Array.from(boxes).map(b=>b.value).join(', ');
+  const form = e.target;
+  const data = new FormData(form);
 
-  // mailto fallback — swap this for Mailchimp/Beehiiv API when ready
-  const sub = encodeURIComponent('[SorinVC] Notify Me — ' + (name || 'New Subscriber'));
-  const bod = encodeURIComponent(
-    'Name: ' + name + '\n' +
-    'Email: ' + email + '\n' +
-    'Interests: ' + interests + '\n\n' +
-    'Please add me to the SorinVC notification list.'
-  );
-  window.open('mailto:Contact@SorinVC.com?subject=' + sub + '&body=' + bod, '_blank');
-
-  // Show success
-  document.getElementById('notifyForm').style.display = 'none';
-  document.getElementById('notifySuccess').style.display = 'block';
+  fetch('/', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams(data).toString()
+  })
+  .then(function(){
+    form.style.display = 'none';
+    document.getElementById('notifySuccess').style.display = 'block';
+  })
+  .catch(function(err){
+    console.error('Form submission error:', err);
+    alert("Something went wrong. Please email Contact@SorinVC.com directly to get on the list.");
+  });
 });
 </script>
 
