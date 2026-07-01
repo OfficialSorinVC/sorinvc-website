@@ -2820,6 +2820,81 @@ function boot(){
   var canvas=document.getElementById('rc'), ctx=canvas.getContext('2d');
   var best=parseInt(localStorage.getItem('srvc_best')||'0');
   var playerName=(localStorage.getItem('srvc_name')||'').slice(0,12);
+  // ── CREDITS: earned 10 per 1000 score per run, spent on colors ──
+  var credits=parseInt(localStorage.getItem('srvc_credits')||'0');
+  // Colors 0 (Torch Red) is free; all others cost credits
+  var COLOR_COSTS=[0,200,200,200,200,200,200,200,200,200,200,300,300,300]; // index matches COLORS array
+  // Underglow — separate from car color, each glow color purchased independently
+  // ── GLOW COLORS (full car body glow, like neon underglow) ──
+  var UNDERGLOW_COLORS=[
+    {n:'No Glow',    hex:null},
+    {n:'Red',        hex:'#ff0100'},
+    {n:'Purple',     hex:'#7b2fff'},
+    {n:'Blue',       hex:'#1565c0'},
+    {n:'Green',      hex:'#00c853'},
+    {n:'Yellow',     hex:'#ffd200'},
+    {n:'Teal',       hex:'#00bcd4'},
+    {n:'Pink',       hex:'#ff1493'},
+    {n:'Orange',     hex:'#ff6a00'},
+    {n:'White',      hex:'#eaeaea'}
+  ];
+  var UNDERGLOW_COST=150;
+  var selGlow=parseInt(localStorage.getItem('srvc_glow')||'0');
+  function glowUnlocked(i){ return i===0 || localStorage.getItem('srvc_glow_'+i)==='1'; }
+  function buyGlow(i){
+    if(i===0) return true;
+    if(glowUnlocked(i)) return true;
+    if(credits < UNDERGLOW_COST) return false;
+    credits -= UNDERGLOW_COST;
+    localStorage.setItem('srvc_credits', credits);
+    localStorage.setItem('srvc_glow_'+i, '1');
+    return true;
+  }
+
+  // ── TAILLIGHT COLORS ──
+  var TAIL_COLORS=[
+    {n:'Default Red',  hex:null},         // 0 = original red rendering
+    {n:'Smoked Black', hex:'#0a0a0a'},     // 1
+    {n:'Amber',        hex:'#ff8800'},     // 2
+    {n:'Blue',         hex:'#1565c0'},     // 3
+    {n:'White',        hex:'#ddeeff'},     // 4
+    {n:'Purple',       hex:'#7b2fff'},     // 5
+    {n:'Pink',         hex:'#ff1493'},     // 6
+    {n:'Teal',         hex:'#00bcd4'},     // 7
+  ];
+  var TAIL_COST=100; // cheaper than glow — it's a subtle mod
+  var selTail=0;
+  selTail=parseInt(localStorage.getItem('srvc_tail')||'0');
+  function tailUnlocked(i){ return i===0 || localStorage.getItem('srvc_tail_'+i)==='1'; }
+  function buyTail(i){
+    if(i===0) return true;
+    if(tailUnlocked(i)) return true;
+    if(credits < TAIL_COST) return false;
+    credits -= TAIL_COST;
+    localStorage.setItem('srvc_credits', credits);
+    localStorage.setItem('srvc_tail_'+i, '1');
+    return true;
+  }
+  // Helper — returns the active taillight fill color (or null for default red)
+  function tailCol(){ return TAIL_COLORS[selTail].hex; }
+  function colorUnlocked(i){ return i===0 || credits>=COLOR_COSTS[i] || (localStorage.getItem('srvc_col_'+i)==='1'); }
+  function spendCredits(i){
+    if(i===0) return true;
+    if(localStorage.getItem('srvc_col_'+i)==='1') return true;
+    if(credits < COLOR_COSTS[i]) return false;
+    credits -= COLOR_COSTS[i];
+    localStorage.setItem('srvc_credits', credits);
+    localStorage.setItem('srvc_col_'+i, '1');
+    return true;
+  }
+  function earnCredits(runScore){
+    var earned = Math.floor(runScore / 1000) * 10;
+    if(earned > 0){
+      credits += earned;
+      localStorage.setItem('srvc_credits', credits);
+    }
+    return earned;
+  }
 
   var W=0,H=0,DPR=Math.min(window.devicePixelRatio||1,2);
   var running=false, score=0, mph=0, combo=0, comboTimer=0;
@@ -2849,9 +2924,11 @@ function boot(){
     {id:'gold',    name:'GOLDEN HOUR',        need:250000}
   ];
   var COLORS=[
-    {n:'Torch Red',hex:'#e10600'},{n:'Racing Yellow',hex:'#ffd200'},{n:'Jet Black',hex:'#17171c'},
+    {n:'Torch Red',hex:'#e10600'},{n:'Racing Yellow',hex:'#ffd200'},{n:'Jet Black',hex:'#111115'},
     {n:'Arctic White',hex:'#eaeaea'},{n:'Riptide Blue',hex:'#1565c0'},{n:'Sebring Orange',hex:'#ff6a00'},
-    {n:'Shadow Gray',hex:'#5a5e64'}
+    {n:'Shadow Gray',hex:'#5a5e64'},{n:'Phantom Purple',hex:'#7b2fff'},{n:'Envy Green',hex:'#00c853'},
+    {n:'Neon Lime',hex:'#c6ff00'},{n:'Deep Teal',hex:'#00bcd4'},{n:'Rose Gold',hex:'#f48fb1'},
+    {n:'Midnight Navy',hex:'#0d1b6e'},{n:'Crimson Pink',hex:'#ff1493'}
   ];
   var PAL={
     night: {t:'#080812',m:'#10101e',b:'#241018',haze:'rgba(255,40,10,0.28)',edge:'rgba(255,1,0,0.45)',glow:'rgba(255,1,0,0.5)',lamp:'255,200,120',sky:'#06060c',win:'rgba(255,120,50,0.3)'},
@@ -3160,9 +3237,8 @@ function boot(){
     if(period === 'day'){
       url += '&created_at=gte.'+new Date(Date.now()-86400000).toISOString();
     } else if(period === 'week'){
-      // Week resets every Monday 12AM — find last Monday midnight
       var now = new Date();
-      var day = now.getDay(); // 0=Sun,1=Mon...
+      var day = now.getDay();
       var diffToMon = (day === 0 ? 6 : day - 1);
       var lastMon = new Date(now);
       lastMon.setDate(now.getDate() - diffToMon);
@@ -3175,12 +3251,27 @@ function boot(){
         'Authorization': 'Bearer '+SB_KEY
       }
     })
-    .then(function(r){ return r.json(); })
-    .then(function(data){
-      var rows = data.map(function(e){ return {n:e.username, s:e.score}; });
-      callback(null, rows);
+    .then(function(r){
+      return r.json().then(function(data){
+        if(!r.ok){
+          // Supabase returned an error — log it so we can debug
+          console.warn('Leaderboard fetch error:', data.message || data.hint || data.code || JSON.stringify(data));
+          callback(new Error(data.message || 'fetch error'), []);
+          return;
+        }
+        if(!Array.isArray(data)){
+          console.warn('Leaderboard unexpected response:', JSON.stringify(data));
+          callback(new Error('bad response'), []);
+          return;
+        }
+        var rows = data.map(function(e){ return {n:e.username, s:e.score}; });
+        callback(null, rows);
+      });
     })
-    .catch(function(e){ callback(e, []); });
+    .catch(function(e){
+      console.warn('Leaderboard network error:', e);
+      callback(e, []);
+    });
   }
 
   // Local fallback for instant game-over screen (still reads localStorage)
@@ -3713,8 +3804,17 @@ function boot(){
 
     // ── BODY SHELL ──
     ctx.save();
-    ctx.shadowColor=focusOn?'rgba(255,1,0,0.80)':'rgba(255,1,0,0.30)';
-    ctx.shadowBlur=focusOn?32:20;
+    // Glow — only when focus active OR player has a glow color selected
+    var activeGlowHex = (typeof selGlow!=='undefined' && selGlow>0 && UNDERGLOW_COLORS[selGlow].hex) ? UNDERGLOW_COLORS[selGlow].hex : null;
+    if(focusOn){
+      ctx.shadowColor='rgba(255,1,0,0.80)'; ctx.shadowBlur=32;
+    } else if(activeGlowHex){
+      // Parse hex to rgb for shadow
+      var _r=parseInt(activeGlowHex.slice(1,3),16),_g=parseInt(activeGlowHex.slice(3,5),16),_b=parseInt(activeGlowHex.slice(5,7),16);
+      ctx.shadowColor='rgba('+_r+','+_g+','+_b+',0.75)'; ctx.shadowBlur=28;
+    } else {
+      ctx.shadowColor='transparent'; ctx.shadowBlur=0;
+    }
     carSil(cx,topY,botY,hH,dH,bH,bk);
     // multi-stop gradient for more realistic panel depth
     var grad=ctx.createLinearGradient(0,topY,0,botY);
@@ -3776,27 +3876,34 @@ function boot(){
     }
 
     // ── CHMSL ──
-    ctx.shadowColor='rgba(255,0,0,0.7)'; ctx.shadowBlur=w*0.04;
+    ctx.shadowColor=_tlGlow; ctx.shadowBlur=w*0.04;
     if(isGTR){
-      ctx.fillStyle='#cc0000';
+      ctx.fillStyle=_tlBase;
       rr(cx-dH*0.62,topY+bh*0.062,dH*1.24,bh*0.022,2); ctx.fill();
     } else if(isSRT){
-      ctx.fillStyle='#bb0000';
+      ctx.fillStyle=_tlBase;
       rr(cx-dH*0.52,topY+bh*0.09,dH*1.04,bh*0.020,1); ctx.fill();
     } else if(isExotic){
       // two separate CHMSL pods
-      ctx.fillStyle='#cc0000';
+      ctx.fillStyle=_tlBase;
       rr(cx-dH*0.72,topY+bh*0.055,dH*0.55,bh*0.020,1); ctx.fill();
       rr(cx+dH*0.17,topY+bh*0.055,dH*0.55,bh*0.020,1); ctx.fill();
     } else {
-      ctx.fillStyle='#c00';
+      ctx.fillStyle=_tlBase;
       ctx.fillRect(cx-dH*0.68,topY+bh*0.072,dH*1.36,bh*0.028);
     }
     ctx.shadowBlur=0;
 
     // ── TAILLIGHTS ──
     var ly=topY+bh*0.26, lh=bh*0.24;
-    ctx.shadowColor='rgba(255,0,0,0.95)'; ctx.shadowBlur=Math.max(w*0.055,5);
+    // Taillight color — dynamic based on selTail
+    var _tc=tailCol(); // null = default red
+    var _tlBase  = _tc ? _tc                : '#b30000';
+    var _tlBright= _tc ? _tc                : '#ff2200';
+    var _tlAccent= _tc ? shade(_tc,0.25)    : '#ff4422';
+    var _tlShadow= _tc ? _tc+'cc'           : 'rgba(255,0,0,0.95)';
+    var _tlGlow  = _tc ? _tc+'aa'           : 'rgba(255,0,0,0.95)';
+    ctx.shadowColor=_tlGlow; ctx.shadowBlur=Math.max(w*0.055,5);
 
     if(isGTR){
       ctx.shadowBlur=0;
@@ -3821,16 +3928,16 @@ function boot(){
       rr(cx-hH*0.99,tlY-2,hH*0.56,tlH+4,2); ctx.fill();
       rr(cx+hH*0.43,tlY-2,hH*0.56,tlH+4,2); ctx.fill();
       // base red
-      ctx.shadowColor='rgba(255,0,0,0.9)'; ctx.shadowBlur=Math.max(w*0.04,4);
-      ctx.fillStyle='#b30000';
+      ctx.shadowColor=_tlGlow; ctx.shadowBlur=Math.max(w*0.04,4);
+      ctx.fillStyle=_tlBase;
       rr(cx-hH*0.97,tlY,hH*0.52,tlH,1); ctx.fill();
       rr(cx+hH*0.45,tlY,hH*0.52,tlH,1); ctx.fill();
       // bright inner strip
-      ctx.fillStyle='#ff2200';
+      ctx.fillStyle=_tlBright;
       rr(cx-hH*0.93,tlY+tlH*0.10,hH*0.44,tlH*0.32,1); ctx.fill();
       rr(cx+hH*0.49,tlY+tlH*0.10,hH*0.44,tlH*0.32,1); ctx.fill();
       // top accent line
-      ctx.fillStyle='#ff4422';
+      ctx.fillStyle=_tlAccent;
       rr(cx-hH*0.95,tlY+tlH*0.04,hH*0.48,tlH*0.09,1); ctx.fill();
       rr(cx+hH*0.47,tlY+tlH*0.04,hH*0.48,tlH*0.09,1); ctx.fill();
       ctx.shadowBlur=0;
@@ -3841,8 +3948,8 @@ function boot(){
       ctx.fillStyle='rgba(70,70,70,0.85)'; ctx.fillText('DODGE',cx,tlY+tlH*0.52);
       ctx.restore();
       // connecting bar
-      ctx.fillStyle='rgba(140,0,0,0.65)'; ctx.shadowColor='rgba(255,0,0,0.5)'; ctx.shadowBlur=Math.max(w*0.02,2);
-      ctx.fillRect(cx-hH*0.99,tlY+tlH*0.62,hH*1.98,Math.max(bh*0.023,1.4));
+      ctx.fillStyle=_tlBase; ctx.globalAlpha=0.65; ctx.shadowColor=_tlGlow; ctx.shadowBlur=Math.max(w*0.02,2);
+      ctx.fillRect(cx-hH*0.99,tlY+tlH*0.62,hH*1.98,Math.max(bh*0.023,1.4)); ctx.globalAlpha=1;
       ctx.shadowBlur=0;
       // SRT badge
       ctx.save(); ctx.font='bold '+Math.max(w*0.036,3)+'px Arial Black,Arial';
@@ -3862,14 +3969,14 @@ function boot(){
       // SVR: thin horizontal blade lights
       ctx.shadowBlur=Math.max(w*0.04,4);
       // left blade
-      ctx.fillStyle='#cc0000';
+      ctx.fillStyle=_tlBase;
       rr(cx-hH*0.88,ly+lh*0.08,hH*0.60,lh*0.22,2); ctx.fill();
-      ctx.fillStyle='#ff2200';
+      ctx.fillStyle=_tlBright;
       rr(cx-hH*0.84,ly+lh*0.11,hH*0.52,lh*0.10,1); ctx.fill();
       // right blade
-      ctx.fillStyle='#cc0000';
+      ctx.fillStyle=_tlBase;
       rr(cx+hH*0.28,ly+lh*0.08,hH*0.60,lh*0.22,2); ctx.fill();
-      ctx.fillStyle='#ff2200';
+      ctx.fillStyle=_tlBright;
       rr(cx+hH*0.32,ly+lh*0.11,hH*0.52,lh*0.10,1); ctx.fill();
       // centre reverse light
       ctx.fillStyle='rgba(200,220,255,0.4)';
@@ -3979,6 +4086,23 @@ function boot(){
 
   function drawPlayerCar(){
     var cd=CARS[selCar], style=cd.id, col=bodyColor();
+    // Glow effect — floor pool glow (body glow handled in drawCarPro via shadowColor)
+    if(selGlow>0 && UNDERGLOW_COLORS[selGlow] && UNDERGLOW_COLORS[selGlow].hex){
+      var _dz=PLAYER_DZ, _cxw=laneToWorld(laneF), _cw=cd.cw;
+      var _b0=P(_cxw-_cw/2,_dz,0), _b1=P(_cxw+_cw/2,_dz,0);
+      var gcx=(_b0.x+_b1.x)/2, gw=_b1.x-_b0.x, gbaseY=_b0.y;
+      var glowCol=UNDERGLOW_COLORS[selGlow].hex;
+      var pulse=0.55+0.45*Math.sin(performance.now()/300);
+      // Floor pool
+      var ug=ctx.createRadialGradient(gcx,gbaseY+5,0,gcx,gbaseY+5,gw*1.1);
+      ug.addColorStop(0,glowCol+'99');
+      ug.addColorStop(0.6,glowCol+'44');
+      ug.addColorStop(1,glowCol+'00');
+      ctx.save(); ctx.globalAlpha=pulse;
+      ctx.fillStyle=ug;
+      ctx.beginPath(); ctx.ellipse(gcx,gbaseY+5,gw*1.1,gw*0.28,0,0,Math.PI*2);
+      ctx.fill(); ctx.restore();
+    }
     var dz=PLAYER_DZ, cxw=laneToWorld(laneF), cw=cd.cw;
     var b0=P(cxw-cw/2,dz,0), b1=P(cxw+cw/2,dz,0);
     var cx=(b0.x+b1.x)/2, w=b1.x-b0.x, baseY=b0.y;
@@ -4233,7 +4357,23 @@ function boot(){
     sc.style.justifyContent='flex-start'; sc.style.overflow='hidden'; sc.style.padding='0'; sc.style.paddingTop='0';
     var cd=CARS[selCar], bd=BGS[selBg], carLock=!carUnlocked(selCar), bgLock=!bgUnlocked(selBg), nu=nextUnlock();
     var lbl=function(t){ return '<div style="font-family:\'Bebas Neue\',sans-serif;font-size:11px;letter-spacing:4px;color:#ff0100;margin:9px 0 4px">'+t+'</div>'; };
-    var sw=''; for(var i=0;i<COLORS.length;i++){ sw+='<button class="cswatch" data-i="'+i+'" title="'+COLORS[i].n+'" style="width:20px;height:20px;border-radius:50%;background:'+COLORS[i].hex+';border:2px solid '+(i===selColor?'#fff':'rgba(255,255,255,0.15)')+';cursor:pointer;pointer-events:auto;padding:0;transition:transform .15s" onmouseover="this.style.transform=\'scale(1.3)\'" onmouseout="this.style.transform=\'scale(1)\'"></button>'; }
+    var sw='<div style="display:flex;flex-direction:column;align-items:center;gap:6px;width:100%">'
+      +'<div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center">';
+    for(var i=0;i<COLORS.length;i++){
+      var unlocked=colorUnlocked(i);
+      var isSelected=(i===selColor);
+      var swTitle=unlocked?COLORS[i].n:COLORS[i].n+' ('+COLOR_COSTS[i]+' credits)';
+      var swBorder=isSelected?'2px solid #fff':'2px solid rgba(255,255,255,0.18)';
+      var swStyle='position:relative;width:28px;height:28px;border-radius:50%;background:'+COLORS[i].hex+';border:'+swBorder+';cursor:pointer;pointer-events:auto;padding:0;overflow:hidden;transition:transform .15s';
+      var swLock=unlocked?'':'<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 28 28\" style=\"position:absolute;inset:0;width:28px;height:28px\"><rect width=\"28\" height=\"28\" rx=\"14\" fill=\"rgba(0,0,0,0.5)\"/><rect x=\"9\" y=\"13\" width=\"10\" height=\"9\" rx=\"2\" fill=\"white\"/><path d=\"M11 13v-2.5a3 3 0 0 1 6 0V13\" stroke=\"white\" stroke-width=\"2\" fill=\"none\" stroke-linecap=\"round\"/></svg>';
+      sw+='<div style=\"position:relative;display:inline-block\">';
+      sw+='<button class=\"cswatch\" data-i=\"'+i+'\" title=\"'+swTitle+'\" style=\"'+swStyle+'\">'+swLock+'</button>';
+      sw+='</div>';
+    }
+    sw+='</div>';
+    // Credits display
+    sw+='<div style="font-family:\'Bebas Neue\',sans-serif;font-size:9px;letter-spacing:2px;color:#444" class="srvc-credits-lbl">'+credits+' CREDITS  ·  EARN 10 SYFER CREDITS / 1,000 PTS</div>';
+    sw+='</div>';
     function selRow(am,ap,label,locked){ return '<div style="display:flex;gap:10px;align-items:center;justify-content:center">'
       +'<button class="gsel" data-a="'+am+'" style="pointer-events:auto;background:rgba(255,255,255,0.05);border:1px solid #2a2a2a;color:#777;width:28px;height:28px;border-radius:4px;cursor:pointer;font-size:16px">&#8249;</button>'
       +'<div style="min-width:160px;text-align:center"><div style="font-family:\'Bebas Neue\',sans-serif;font-size:19px;letter-spacing:2px;color:'+(locked?'#444':'#fff')+'">'+label+'</div></div>'
@@ -4242,6 +4382,17 @@ function boot(){
     var html=''
       // ── TOP BAR: centered title, icon buttons top-right ──
       +'<div style="position:relative;width:100%;padding:18px 16px 0;box-sizing:border-box;text-align:center">'
+        // LOG IN / account button top-left
+        +(sbUser
+          ? '<button id="rsignout" style="position:absolute;top:14px;left:14px;pointer-events:auto;background:rgba(255,1,0,0.1);border:1px solid rgba(255,1,0,0.3);color:#ff4444;font-family:\'Bebas Neue\',sans-serif;font-size:9px;letter-spacing:2px;padding:5px 8px;border-radius:6px;cursor:pointer;line-height:1">'+esc(playerName.slice(0,8))+'<br><span style="color:#333;font-size:7px">SIGN OUT</span></button>'
+          : '<button id="rloginBtn" style="position:absolute;top:14px;left:14px;pointer-events:auto;background:rgba(255,1,0,0.12);border:1px solid #ff0100;color:#ff0100;font-family:\'Bebas Neue\',sans-serif;font-size:11px;letter-spacing:2px;padding:6px 10px;border-radius:6px;cursor:pointer;line-height:1">LOG IN</button>'
+        )
+        // SYFER logo + credits widget — centered below login button
+        +'<div style="position:absolute;top:64px;left:0;width:68px;text-align:center;pointer-events:none">'
+          +'<img src="img/misc/syfer-logo-white.png" style="width:36px;height:auto;display:block;margin:0 auto;opacity:0.85">'
+          +'<div style="font-family:\'Bebas Neue\',sans-serif;font-size:12px;letter-spacing:1px;color:#ff0100;line-height:1;margin-top:4px">'+credits+'</div>'
+          +'<div style="font-size:6px;letter-spacing:1.5px;color:#444;line-height:1.4;text-transform:uppercase">CREDITS</div>'
+        +'</div>'
         // icon buttons absolutely positioned top-right
         +'<div style="position:absolute;top:14px;right:14px;display:flex;flex-direction:column;gap:8px">'
           +'<button id="rhtpBtn" style="pointer-events:auto;background:rgba(255,255,255,0.06);border:1px solid #2a2a2a;color:#666;width:34px;height:34px;border-radius:8px;font-size:15px;cursor:pointer;line-height:1" title="How to Play">?</button>'
@@ -4262,8 +4413,9 @@ function boot(){
         +'<input id="rname" maxlength="12" placeholder="ENTER USERNAME" value="'+esc(playerName)+'" style="pointer-events:auto;background:rgba(255,255,255,0.06);border:1px solid #2a2a2a;color:#fff;font-family:\'Bebas Neue\',sans-serif;font-size:17px;letter-spacing:3px;text-align:center;text-transform:uppercase;padding:7px 12px;border-radius:5px;width:190px;outline:none">'
         +lbl('CAR')
         +selRow('car-','car+',(carLock?'🔒 '+cd.need.toLocaleString():cd.name),carLock)
-        +'<div style="display:flex;gap:6px;margin-top:7px;justify-content:center">'+sw+'</div>'
-        +lbl('TRACK')
+        +'<div style="margin-top:8px;text-align:center">'
+        +'<button id="rcustomize" style="pointer-events:auto;background:rgba(255,1,0,0.08);border:1px solid rgba(255,1,0,0.35);color:#ff4444;font-family:\'Bebas Neue\',sans-serif;font-size:12px;letter-spacing:3px;padding:7px 20px;border-radius:6px;cursor:pointer">🎨 CUSTOMIZE CAR</button>'
+        +'</div>'+lbl('TRACK')
         +selRow('bg-','bg+',(bgLock?'🔒 '+bd.need.toLocaleString():bd.name.toUpperCase()),bgLock)
       +'</div>'
       // ── START BUTTON ──
@@ -4295,33 +4447,30 @@ function boot(){
       buildStart();
     }); });
     sc.querySelectorAll('.cswatch').forEach(function(btn){ btn.addEventListener('click',function(){
-      selColor=parseInt(btn.getAttribute('data-i')); localStorage.setItem('srvc_color',selColor); buildStart();
+      var i=parseInt(btn.getAttribute('data-i'));
+      if(colorUnlocked(i)){
+        selColor=i; localStorage.setItem('srvc_color',selColor); buildStart();
+      } else if(credits >= COLOR_COSTS[i]){
+        if(spendCredits(i)){ selColor=i; localStorage.setItem('srvc_color',selColor); buildStart(); }
+      } else {
+        // Flash — not enough credits
+        var els=document.querySelectorAll('.srvc-credits-lbl');
+        els.forEach(function(el){
+          el.style.color='#ff0100';
+          el.textContent='NEED '+(COLOR_COSTS[i]-credits)+' MORE CREDITS';
+          setTimeout(function(){ el.style.color='#444'; el.textContent=credits+' CREDITS  ·  EARN 10 PER 1,000 SCORE  ·  COLORS COST 200'; },2500);
+        });
+      }
     }); });
     document.getElementById('rhtpBtn').addEventListener('click',function(){ showHowToPlay(); });
     document.getElementById('rlbBtn').addEventListener('click',function(){ showLeaderboard(); });
-    // Inject sign in / sign out button next to leaderboard button
-    var lbBtnEl = document.getElementById('rlbBtn');
-    if(lbBtnEl && lbBtnEl.parentNode){
-      var authBtn = document.createElement('button');
-      if(sbUser){
-        authBtn.id='rsignout';
-        authBtn.title='Sign Out ('+playerName+')';
-        authBtn.textContent='OUT';
-        authBtn.style.cssText='background:rgba(255,255,255,0.03);border:1px solid #1a1a1a;color:#333;font-family:\'Bebas Neue\',sans-serif;font-size:8px;letter-spacing:2px;padding:4px 7px;border-radius:6px;cursor:pointer;pointer-events:auto';
-        authBtn.addEventListener('click', signOut);
-      } else {
-        authBtn.id='rsignin';
-        authBtn.title='Log In';
-        authBtn.textContent='LOG IN';
-        authBtn.style.cssText='background:rgba(255,1,0,0.08);border:1px solid rgba(255,1,0,0.2);color:#ff4444;font-family:\'Bebas Neue\',sans-serif;font-size:8px;letter-spacing:2px;padding:4px 7px;border-radius:6px;cursor:pointer;pointer-events:auto';
-        authBtn.addEventListener('click', function(){ showAuthPanel('login'); });
-      }
-      lbBtnEl.parentNode.appendChild(authBtn);
-    }
-    var soBtn=document.getElementById('rsignout');
-    if(soBtn) soBtn.addEventListener('click',function(){ signOut(); });
-    var siBtn=document.getElementById('rsignin');
-    if(siBtn) siBtn.addEventListener('click',function(){ showAuthPanel('login'); });
+    // Wire top-left LOG IN / sign out button
+    var loginBtn = document.getElementById('rloginBtn');
+    if(loginBtn) loginBtn.addEventListener('click', function(){ showAuthPanel('login'); });
+    var custBtn = document.getElementById('rcustomize');
+    if(custBtn) custBtn.addEventListener('click', function(){ showCustomize(); });
+    var soBtn = document.getElementById('rsignout');
+    if(soBtn) soBtn.addEventListener('click', signOut);
     updateStartBtn();
     drawIdle();
   }
@@ -4387,6 +4536,214 @@ function boot(){
     renderShell();
   }
 
+  function showCustomize(){
+    var panel=document.getElementById('rhtp');
+    if(!panel) return;
+
+    var previewColIdx=selColor;
+    var previewGlowIdx=selGlow;
+    var previewTailIdx=selTail;
+    var page=0; // 0=Color, 1=Glow, 2=Taillights
+    var pages=['COLOR','GLOW','TAILLIGHTS'];
+
+    // ── Draw preview using real drawCarPro, temporarily overriding ctx + selTail ──
+    function drawPreview(){
+      var cv=document.getElementById('custCanvas');
+      if(!cv) return;
+      var prevCtx=ctx;
+      var prevTail=selTail;
+      ctx=cv.getContext('2d');
+      selTail=previewTailIdx; // override so tailCol() returns preview color
+      var cw=cv.width, ch=cv.height;
+      ctx.clearRect(0,0,cw,ch);
+      ctx.fillStyle='#08080e'; ctx.fillRect(0,0,cw,ch);
+      var rg=ctx.createLinearGradient(0,ch*0.52,0,ch);
+      rg.addColorStop(0,'#131320'); rg.addColorStop(1,'#0a0a14');
+      ctx.fillStyle=rg; ctx.fillRect(0,ch*0.52,cw,ch);
+      // lane lines
+      ctx.strokeStyle='rgba(255,255,255,0.05)'; ctx.lineWidth=1.5;
+      ctx.setLineDash([8,12]);
+      ctx.beginPath(); ctx.moveTo(cw*0.38,ch*0.52); ctx.lineTo(cw*0.38,ch); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cw*0.62,ch*0.52); ctx.lineTo(cw*0.62,ch); ctx.stroke();
+      ctx.setLineDash([]);
+
+      var carW=cw*0.50, carX=cw/2, carY=ch*0.84, cd=CARS[selCar];
+
+      // Glow — set as shadowColor BEFORE drawCarPro so the car body glows
+      if(previewGlowIdx>0 && UNDERGLOW_COLORS[previewGlowIdx].hex){
+        var gh=UNDERGLOW_COLORS[previewGlowIdx].hex;
+        var gr=parseInt(gh.slice(1,3),16), gg2=parseInt(gh.slice(3,5),16), gb=parseInt(gh.slice(5,7),16);
+        ctx.shadowColor='rgba('+gr+','+gg2+','+gb+',0.85)';
+        ctx.shadowBlur=38;
+        // floor pool
+        var fp=ctx.createRadialGradient(carX,carY+4,0,carX,carY+4,carW*1.05);
+        fp.addColorStop(0,gh+'88'); fp.addColorStop(1,gh+'00');
+        ctx.fillStyle=fp;
+        ctx.beginPath(); ctx.ellipse(carX,carY+5,carW*1.05,carW*0.22,0,0,Math.PI*2); ctx.fill();
+        ctx.shadowColor='rgba('+gr+','+gg2+','+gb+',0.85)';
+        ctx.shadowBlur=38;
+      } else {
+        ctx.shadowColor='transparent'; ctx.shadowBlur=0;
+      }
+
+      drawCarPro(carX, carY, carW, cd.id, COLORS[previewColIdx].hex, 0);
+
+      ctx.shadowColor='transparent'; ctx.shadowBlur=0;
+      ctx=prevCtx;
+      selTail=prevTail;
+    }
+
+    // ── Swatch: square with circle inside ──
+    function swatch(colorHex, isPreview, isEquipped, isLocked, dataAttr, cls){
+      var border=isPreview?'3px solid #fff':isEquipped?'3px solid rgba(255,1,0,0.9)':'2px solid rgba(255,255,255,0.12)';
+      var bg=colorHex?colorHex:'#111';
+      // Lock = small centered dark circle with white padlock SVG inside it
+      var lockBadge=isLocked
+        ?'<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:18px;height:18px;border-radius:50%;background:rgba(0,0,0,0.72);display:flex;align-items:center;justify-content:center">'
+          +'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 14 16" width="10" height="11">'
+            +'<rect x="1" y="7" width="12" height="9" rx="2" fill="white"/>'
+            +'<path d="M3 7V5a4 4 0 0 1 8 0v2" stroke="white" stroke-width="1.8" fill="none" stroke-linecap="round"/>'
+          +'</svg>'
+        +'</div>'
+        :'';
+      var noGlyph=!colorHex?'<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.3);font-size:15px;pointer-events:none">Ø</div>':'';
+      return '<button class="'+cls+'" '+dataAttr+' style="position:relative;width:36px;height:36px;border-radius:6px;background:'+bg+';border:'+border+';cursor:pointer;pointer-events:auto;padding:0;overflow:hidden;flex-shrink:0">'+noGlyph+lockBadge+'</button>';
+    }
+
+    function buildUI(){
+      var colorGrid='',glowGrid='',tailGrid='';
+
+      for(var i=0;i<COLORS.length;i++){
+        var unl=colorUnlocked(i);
+        colorGrid+=swatch(
+          COLORS[i].hex, i===previewColIdx, i===selColor, !unl,
+          'data-i="'+i+'"', 'cc-col'
+        );
+      }
+      for(var j=0;j<UNDERGLOW_COLORS.length;j++){
+        var gunl=glowUnlocked(j);
+        glowGrid+=swatch(
+          UNDERGLOW_COLORS[j].hex, j===previewGlowIdx, j===selGlow, !gunl&&j>0,
+          'data-j="'+j+'"', 'cc-glow'
+        );
+      }
+      for(var t=0;t<TAIL_COLORS.length;t++){
+        var tunl=tailUnlocked(t);
+        tailGrid+=swatch(
+          TAIL_COLORS[t].hex?TAIL_COLORS[t].hex:null, t===previewTailIdx, t===selTail, !tunl&&t>0,
+          'data-t="'+t+'"', 'cc-tail'
+        );
+      }
+
+      // Action bar logic
+      function actionBar(isActive, isUnlocked, canAfford, cost, buyId, equipId){
+        if(isActive) return '<span style="font-family:\'Bebas Neue\',sans-serif;font-size:11px;letter-spacing:2px;color:#444">EQUIPPED</span>';
+        if(isUnlocked) return '<button id="'+equipId+'" style="background:#ff0100;color:#fff;border:none;font-family:\'Bebas Neue\',sans-serif;font-size:12px;letter-spacing:3px;padding:7px 20px;border-radius:5px;cursor:pointer;pointer-events:auto">EQUIP</button>';
+        return '<button id="'+buyId+'" '+(canAfford?'':'disabled ')+' style="background:'+(canAfford?'#ff0100':'#1e1e1e')+';color:'+(canAfford?'#fff':'#555')+';border:none;font-family:\'Bebas Neue\',sans-serif;font-size:12px;letter-spacing:2px;padding:7px 16px;border-radius:5px;cursor:'+(canAfford?'pointer':'not-allowed')+';pointer-events:auto">BUY '+cost+' SC'+(canAfford?'':' · NEED '+(cost-credits)+' MORE')+'</button>';
+      }
+
+      var colBar=actionBar(previewColIdx===selColor, colorUnlocked(previewColIdx), credits>=COLOR_COSTS[previewColIdx], COLOR_COSTS[previewColIdx], 'cc-buy-col','cc-equip-col');
+      var glowBar=actionBar(previewGlowIdx===selGlow, glowUnlocked(previewGlowIdx), credits>=UNDERGLOW_COST, UNDERGLOW_COST, 'cc-buy-glow','cc-equip-glow');
+      var tailBar=actionBar(previewTailIdx===selTail, tailUnlocked(previewTailIdx), credits>=TAIL_COST, TAIL_COST, 'cc-buy-tail','cc-equip-tail');
+
+      var pageGrids=[colorGrid,glowGrid,tailGrid];
+      var pageNames=[COLORS[previewColIdx].n, UNDERGLOW_COLORS[previewGlowIdx].n, TAIL_COLORS[previewTailIdx].n];
+      var pageBars=[colBar,glowBar,tailBar];
+      var pageDescs=['','150 SC · FULL BODY GLOW','100 SC · BRAKES & STOP LIGHTS'];
+
+      panel.innerHTML=
+        '<div style="max-width:400px;margin:0 auto;padding:16px 16px 40px">'
+
+        // ── Header: Back + Title + Credits ──
+        +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">'
+          +'<button id="custBack" style="background:none;border:1px solid #2a2a2a;color:#666;width:34px;height:34px;border-radius:50%;font-size:16px;cursor:pointer;pointer-events:auto;flex-shrink:0">&#8592;</button>'
+          +'<div style="text-align:center">'
+            +'<div style="font-family:\'Bebas Neue\',sans-serif;font-size:22px;letter-spacing:3px;color:#fff">CUSTOMIZE</div>'
+          +'</div>'
+          +'<div style="text-align:right">'
+            +'<div style="font-family:\'Bebas Neue\',sans-serif;font-size:8px;letter-spacing:2px;color:#444">SYFER SC</div>'
+            +'<div id="custCredits" style="font-family:\'Bebas Neue\',sans-serif;font-size:16px;color:#ff0100;letter-spacing:1px">'+credits+'</div>'
+          +'</div>'
+        +'</div>'
+
+        // ── Preview canvas ──
+        +'<div style="width:100%;background:#08080e;border:1px solid #1a1a1a;border-radius:10px;margin-bottom:14px;overflow:hidden">'
+          +'<canvas id="custCanvas" width="380" height="148" style="width:100%;display:block"></canvas>'
+        +'</div>'
+
+        // ── Page title + desc ──
+        +'<div style="display:flex;align-items:baseline;gap:8px;margin-bottom:10px">'
+          +'<div style="font-family:\'Bebas Neue\',sans-serif;font-size:12px;letter-spacing:3px;color:#ff0100">'+pages[page]+'</div>'
+          +'<div style="font-size:8px;color:#333;letter-spacing:1px">'+pageDescs[page]+'</div>'
+        +'</div>'
+
+        // ── Swatch grid ──
+        +'<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px">'+pageGrids[page]+'</div>'
+
+        // ── Selected name + action bar ──
+        +'<div style="display:flex;align-items:center;justify-content:space-between;min-height:34px;margin-bottom:18px">'
+          +'<div style="font-size:9px;color:#555;letter-spacing:1px">'+pageNames[page].toUpperCase()+'</div>'
+          +'<div>'+pageBars[page]+'</div>'
+        +'</div>'
+
+        // ── Page nav arrows ──
+        +'<div style="display:flex;align-items:center;justify-content:center;gap:20px">'
+          +'<button id="custPrev" '+(page===0?'disabled':'')+'style="background:'+(page===0?'#111':'rgba(255,255,255,0.06)')+';border:1px solid #2a2a2a;color:'+(page===0?'#333':'#888')+';width:40px;height:40px;border-radius:50%;font-size:18px;cursor:'+(page===0?'default':'pointer')+';pointer-events:auto">&#8592;</button>'
+          +'<div style="font-family:\'Bebas Neue\',sans-serif;font-size:10px;letter-spacing:3px;color:#333">'+( page+1)+' / '+pages.length+'</div>'
+          +'<button id="custNext" '+(page===pages.length-1?'disabled':'')+'style="background:'+(page===pages.length-1?'#111':'rgba(255,255,255,0.06)')+';border:1px solid #2a2a2a;color:'+(page===pages.length-1?'#333':'#888')+';width:40px;height:40px;border-radius:50%;font-size:18px;cursor:'+(page===pages.length-1?'default':'pointer')+';pointer-events:auto">&#8594;</button>'
+        +'</div>'
+
+        +'</div>';
+
+      panel.style.display='block';
+      setTimeout(drawPreview, 30);
+
+      // Back button
+      document.getElementById('custBack').addEventListener('click',function(){
+        panel.style.display='none'; buildStart();
+      });
+
+      // Page navigation
+      var pBtn=document.getElementById('custPrev');
+      var nBtn=document.getElementById('custNext');
+      if(pBtn) pBtn.addEventListener('click',function(){ if(page>0){ page--; buildUI(); } });
+      if(nBtn) nBtn.addEventListener('click',function(){ if(page<pages.length-1){ page++; buildUI(); } });
+
+      // Swatch clicks
+      panel.querySelectorAll('.cc-col').forEach(function(btn){
+        btn.addEventListener('click',function(){ previewColIdx=parseInt(btn.getAttribute('data-i')); buildUI(); });
+      });
+      panel.querySelectorAll('.cc-glow').forEach(function(btn){
+        btn.addEventListener('click',function(){ previewGlowIdx=parseInt(btn.getAttribute('data-j')); buildUI(); });
+      });
+      panel.querySelectorAll('.cc-tail').forEach(function(btn){
+        btn.addEventListener('click',function(){ previewTailIdx=parseInt(btn.getAttribute('data-t')); buildUI(); });
+      });
+
+      // Action buttons
+      var b;
+      b=document.getElementById('cc-equip-col');
+      if(b) b.addEventListener('click',function(){ selColor=previewColIdx; localStorage.setItem('srvc_color',selColor); buildUI(); });
+      b=document.getElementById('cc-buy-col');
+      if(b) b.addEventListener('click',function(){ if(credits>=COLOR_COSTS[previewColIdx]&&spendCredits(previewColIdx)){ selColor=previewColIdx; localStorage.setItem('srvc_color',selColor); buildUI(); } });
+      b=document.getElementById('cc-equip-glow');
+      if(b) b.addEventListener('click',function(){ selGlow=previewGlowIdx; localStorage.setItem('srvc_glow',selGlow); buildUI(); });
+      b=document.getElementById('cc-buy-glow');
+      if(b) b.addEventListener('click',function(){ if(credits>=UNDERGLOW_COST&&buyGlow(previewGlowIdx)){ selGlow=previewGlowIdx; localStorage.setItem('srvc_glow',selGlow); buildUI(); } });
+      b=document.getElementById('cc-equip-tail');
+      if(b) b.addEventListener('click',function(){ selTail=previewTailIdx; localStorage.setItem('srvc_tail',selTail); buildUI(); });
+      b=document.getElementById('cc-buy-tail');
+      if(b) b.addEventListener('click',function(){ if(credits>=TAIL_COST&&buyTail(previewTailIdx)){ selTail=previewTailIdx; localStorage.setItem('srvc_tail',selTail); buildUI(); } });
+
+      // Close on background
+      panel.addEventListener('click',function(e){ if(e.target===panel){ panel.style.display='none'; buildStart(); } });
+    }
+
+    buildUI();
+  }
+
+
+
   function showHowToPlay(){
     var panel=document.getElementById('rhtp');
     if(!panel) return;
@@ -4450,8 +4807,19 @@ function boot(){
       +row('📉','DRAINS WHILE ACTIVE','Near-misses during Focus drain the meter faster. Meter hits zero = Focus gone')
       +row('💀','NO INVINCIBILITY','You still crash if you hit a car — Focus is a reading tool, not a shield');
 
+    // Account + credits section
+    var account = S('🏆  ACCOUNTS & TOURNAMENTS')
+      +row('👤','CREATE A FREE ACCOUNT','Sign up with just a username and password — no email needed. Your best score, unlocks, and credits are saved across all devices.')
+      +row('💾','SAVE YOUR PROGRESS','Guests lose everything when they clear their cache. Account holders keep their best score, car, track, and credits forever.')
+      +row('🎯','COMPETE IN TOURNAMENTS','SorinVC runs weekly $$$ tournaments for the top 3 players on the global leaderboard. You must have an account to enter — guest scores don\'t count.')
+      +row('💰','CREDITS SYSTEM','Earn 10 credits for every 1,000 points you score in a single run. Spend credits to unlock car colors in the garage. Torch Red is free — everything else costs 200 credits.')
+      +'<div style="background:rgba(255,1,0,0.06);border:1px solid rgba(255,1,0,0.2);border-radius:8px;padding:12px 14px;margin-top:10px;text-align:center">'
+        +'<div style="font-family:\'Bebas Neue\',sans-serif;font-size:10px;letter-spacing:3px;color:#ff0100;margin-bottom:6px">READY TO COMPETE?</div>'
+        +'<div style="font-size:9px;color:#555;line-height:1.6">Hit LOG IN in the top-left corner of the game to create your account or sign in. Follow @SorinVC to get notified when the next tournament goes live.</div>'
+      +'</div>';
+
     // Always show both — phone first, keyboard second
-    var content = phoneControls + kbControls + scoring + combo + focus;
+    var content = account + phoneControls + kbControls + scoring + combo + focus;
 
     panel.innerHTML='<div style="max-width:440px;margin:0 auto;padding:24px 18px 48px">'
       +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">'
@@ -4485,7 +4853,7 @@ function boot(){
     }
     var nm=(playerName&&playerName.trim())?playerName.trim().slice(0,12):'YOU';
     if(playerName) localStorage.setItem('srvc_name',nm);
-    var lb=addScore(nm,s);
+    var earnedThisRun=earnCredits(s); var lb=addScore(nm,s);
     var g=s>12000?'LEGENDARY':s>6000?'ELITE':s>2500?'SKILLED':s>900?'DRIVER':'ROOKIE';
     var gCol=s>12000?'#ff0100':s>6000?'#ff5500':s>2500?'#ffcc00':s>900?'#aaaaaa':'#555555';
     var nu=nextUnlock();
@@ -4515,6 +4883,7 @@ function boot(){
     var html='<div style="width:100%;max-width:340px;text-align:center;padding:0 4px;box-sizing:border-box">'
       // WRECKED header
       +'<div style="font-family:\'Bebas Neue\',sans-serif;font-size:11px;letter-spacing:5px;color:#333;margin-bottom:6px">— WRECKED —</div>'
+      +(earnedThisRun>0?'<div style="font-family:\'Bebas Neue\',sans-serif;font-size:10px;letter-spacing:2px;color:#ff6600;margin-bottom:4px">+ '+earnedThisRun+' SYFER CREDITS EARNED</div>':'')
       // big score
       +'<div style="font-family:\'Arial Black\',sans-serif;font-size:clamp(52px,14vw,82px);font-weight:900;color:#ff0100;line-height:1;text-shadow:0 0 30px rgba(255,1,0,0.5),0 0 60px rgba(255,1,0,0.2)">'+s.toLocaleString()+'</div>'
       // rank badge
@@ -4644,9 +5013,8 @@ function boot(){
   requestAnimationFrame(function(){
     sizeCanvas();
     initAuth(function(){
-      // If no session, show auth panel; guest can skip
-      if(!sbUser){ showAuthPanel('login'); }
-      else { buildStart(); }
+      // Always go straight to the game — login is optional via button
+      buildStart();
     });
   });
 
