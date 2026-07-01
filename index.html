@@ -2909,19 +2909,19 @@ function boot(){
   var horizonY,bottomY,vanishX,roadHalfBottom,roadHalfTop;
 
   var CARS=[
-    {id:'c7',     name:'SYFER | C7',  need:0,      cw:0.26, len:1.9, bodyH:0.13, cabinH:0.06},
-    {id:'muscle', name:'SYFER | SRT', need:8000,   cw:0.26, len:2.0, bodyH:0.13, cabinH:0.09},
-    {id:'exotic', name:'SYFER | SVR', need:28000,  cw:0.26, len:1.7, bodyH:0.10, cabinH:0.05},
-    {id:'gt',     name:'SYFER | GTR', need:75000,  cw:0.26, len:2.0, bodyH:0.12, cabinH:0.07}
+    {id:'c7',     name:'SYFER | C7',  need:0,      sc:0,    cw:0.26, len:1.9, bodyH:0.13, cabinH:0.06},
+    {id:'muscle', name:'SYFER | SRT', need:8000,   sc:500,  cw:0.26, len:2.0, bodyH:0.13, cabinH:0.09},
+    {id:'exotic', name:'SYFER | SVR', need:28000,  sc:1500, cw:0.26, len:1.7, bodyH:0.10, cabinH:0.05},
+    {id:'gt',     name:'SYFER | GTR', need:75000,  sc:4000, cw:0.26, len:2.0, bodyH:0.12, cabinH:0.07}
   ];
   var BGS=[
-    {id:'night',   name:'CHICAGO NIGHT',      need:0},
-    {id:'sunset',  name:'LAKEFRONT SUNSET',   need:5000},
-    {id:'neon',    name:'NEON CITY',          need:15000},
-    {id:'storm',   name:'MIDNIGHT STORM',     need:35000},
-    {id:'dawn',    name:'EARLY DAWN',         need:70000},
-    {id:'blood',   name:'BLOOD MOON',         need:130000},
-    {id:'gold',    name:'GOLDEN HOUR',        need:250000}
+    {id:'night',   name:'CHICAGO NIGHT',      need:0,      sc:0},
+    {id:'sunset',  name:'LAKEFRONT SUNSET',   need:5000,   sc:300},
+    {id:'neon',    name:'NEON CITY',          need:15000,  sc:800},
+    {id:'storm',   name:'MIDNIGHT STORM',     need:35000,  sc:1200},
+    {id:'dawn',    name:'EARLY DAWN',         need:70000,  sc:2000},
+    {id:'blood',   name:'BLOOD MOON',         need:130000, sc:3000},
+    {id:'gold',    name:'GOLDEN HOUR',        need:250000, sc:5000}
   ];
   var COLORS=[
     {n:'Torch Red',hex:'#e10600'},{n:'Racing Yellow',hex:'#ffd200'},{n:'Jet Black',hex:'#111115'},
@@ -2943,8 +2943,30 @@ function boot(){
   var selBg=Math.max(0,BGS.findIndex(function(b){return b.id===(localStorage.getItem('srvc_bg')||'night');}));
   var selColor=parseInt(localStorage.getItem('srvc_color')||'0'); if(selColor<0||selColor>=COLORS.length)selColor=0;
   if(selCar<0)selCar=0; if(selBg<0)selBg=0;
-  function carUnlocked(i){ return best>=CARS[i].need; }
-  function bgUnlocked(i){ return best>=BGS[i].need; }
+  function carUnlocked(i){
+    if(CARS[i].sc===0) return true; // free
+    return localStorage.getItem('srvc_car_sc_'+CARS[i].id)==='1';
+  }
+  function buyCar(i){
+    if(carUnlocked(i)) return true;
+    if(credits < CARS[i].sc) return false;
+    credits -= CARS[i].sc;
+    localStorage.setItem('srvc_credits', credits);
+    localStorage.setItem('srvc_car_sc_'+CARS[i].id, '1');
+    return true;
+  }
+  function bgUnlocked(i){
+    if(BGS[i].sc===0) return true; // free
+    return localStorage.getItem('srvc_bg_sc_'+BGS[i].id)==='1';
+  }
+  function buyBg(i){
+    if(bgUnlocked(i)) return true;
+    if(credits < BGS[i].sc) return false;
+    credits -= BGS[i].sc;
+    localStorage.setItem('srvc_credits', credits);
+    localStorage.setItem('srvc_bg_sc_'+BGS[i].id, '1');
+    return true;
+  }
   function curPal(){ return PAL[BGS[selBg].id]; }
   function bodyColor(){ return COLORS[selColor].hex; }
   function esc(s){ return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
@@ -2996,31 +3018,53 @@ function boot(){
   // Apply loaded profile data to game state
   function applyProfile(){
     if(!sbUser) return;
-    playerName = sbUser.username;
-    localStorage.setItem('srvc_name', playerName);
-    if(sbUser.best_score > best){ best = sbUser.best_score; localStorage.setItem('srvc_best', best); }
-    if(sbUser.sel_car){ var ci = CARS.findIndex(function(c){ return c.id===sbUser.sel_car; }); if(ci>=0) selCar=ci; }
-    if(sbUser.sel_bg){ var bi = BGS.findIndex(function(b){ return b.id===sbUser.sel_bg; }); if(bi>=0) selBg=bi; }
-    if(typeof sbUser.sel_color === 'number') selColor = sbUser.sel_color;
+    var p=sbUser;
+    playerName=p.username; localStorage.setItem('srvc_name',playerName);
+    if(p.best_score>best){ best=p.best_score; localStorage.setItem('srvc_best',best); }
+    if(typeof p.credits==='number' && p.credits>credits){ credits=p.credits; localStorage.setItem('srvc_credits',credits); }
+    if(p.sel_car){ var ci=CARS.findIndex(function(c){return c.id===p.sel_car;}); if(ci>=0) selCar=ci; }
+    if(p.sel_bg){ var bi=BGS.findIndex(function(b){return b.id===p.sel_bg;}); if(bi>=0) selBg=bi; }
+    if(typeof p.sel_color==='number') selColor=p.sel_color;
+    // Restore all unlock flags into localStorage
+    ['muscle','exotic','gt'].forEach(function(id){ if(p['car_'+id]) localStorage.setItem('srvc_car_sc_'+id,'1'); });
+    ['sunset','neon','storm','dawn','blood','gold'].forEach(function(id){ if(p['bg_'+id]) localStorage.setItem('srvc_bg_sc_'+id,'1'); });
+    for(var ci2=1;ci2<=13;ci2++) if(p['col_'+ci2]) localStorage.setItem('srvc_col_'+ci2,'1');
+    for(var gi=1;gi<=9;gi++)    if(p['glow_'+gi])  localStorage.setItem('srvc_glow_'+gi,'1');
+    for(var ti=1;ti<=7;ti++)    if(p['tail_'+ti])  localStorage.setItem('srvc_tail_'+ti,'1');
   }
 
   // Save progress to players table
   function saveProfileToDB(){
     if(!sbUser) return;
-    fetch(SB_URL+'/rest/v1/players?id=eq.'+encodeURIComponent(sbUser.id), {
-      method: 'PATCH',
-      headers:{
-        'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY,
-        'Content-Type':'application/json', 'Prefer':'return=minimal'
-      },
-      body: JSON.stringify({
-        best_score: best,
-        sel_car: CARS[selCar] ? CARS[selCar].id : 'sports',
-        sel_bg: BGS[selBg] ? BGS[selBg].id : 'night',
-        sel_color: selColor,
-        updated_at: new Date().toISOString()
-      })
-    }).catch(function(e){ console.warn('Profile save:', e); });
+    // Build unlock payload from localStorage flags
+    var payload={
+      best_score:best,
+      credits:credits,
+      sel_car:CARS[selCar]?CARS[selCar].id:'c7',
+      sel_bg:BGS[selBg]?BGS[selBg].id:'night',
+      sel_color:selColor,
+      updated_at:new Date().toISOString()
+    };
+    // Car unlocks
+    ['muscle','exotic','gt'].forEach(function(id){
+      payload['car_'+id]=localStorage.getItem('srvc_car_sc_'+id)==='1';
+    });
+    // Track unlocks
+    ['sunset','neon','storm','dawn','blood','gold'].forEach(function(id){
+      payload['bg_'+id]=localStorage.getItem('srvc_bg_sc_'+id)==='1';
+    });
+    // Color, glow, tail unlocks
+    for(var ci=1;ci<=13;ci++) payload['col_'+ci]=localStorage.getItem('srvc_col_'+ci)==='1';
+    for(var gi=1;gi<=9;gi++)  payload['glow_'+gi]=localStorage.getItem('srvc_glow_'+gi)==='1';
+    for(var ti=1;ti<=7;ti++)  payload['tail_'+ti]=localStorage.getItem('srvc_tail_'+ti)==='1';
+
+    setTimeout(function(){
+      fetch(SB_URL+'/rest/v1/players?id=eq.'+encodeURIComponent(sbUser.id),{
+        method:'PATCH',
+        headers:{'apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Content-Type':'application/json','Prefer':'return=minimal'},
+        body:JSON.stringify(payload)
+      }).catch(function(e){ console.warn('Profile save:',e); });
+    },0);
   }
 
   // Kept for compatibility
@@ -4331,8 +4375,8 @@ function boot(){
 
   function nextUnlock(){
     var items=[];
-    for(var i=0;i<CARS.length;i++) if(best<CARS[i].need) items.push({name:'Car: '+CARS[i].name,need:CARS[i].need});
-    for(var i=0;i<BGS.length;i++) if(best<BGS[i].need) items.push({name:'Track: '+BGS[i].name,need:BGS[i].need});
+    for(var i=0;i<CARS.length;i++) if(!carUnlocked(i)) items.push({name:'Car: '+CARS[i].name,need:CARS[i].sc,isSC:true});
+    for(var i=0;i<BGS.length;i++) if(!bgUnlocked(i)) items.push({name:'Track: '+BGS[i].name,need:BGS[i].sc,isSC:true});
     items.sort(function(a,b){return a.need-b.need;});
     return items.length?items[0]:null;
   }
@@ -4387,12 +4431,7 @@ function boot(){
           ? '<button id="rsignout" style="position:absolute;top:14px;left:14px;pointer-events:auto;background:rgba(255,1,0,0.1);border:1px solid rgba(255,1,0,0.3);color:#ff4444;font-family:\'Bebas Neue\',sans-serif;font-size:9px;letter-spacing:2px;padding:5px 8px;border-radius:6px;cursor:pointer;line-height:1">'+esc(playerName.slice(0,8))+'<br><span style="color:#333;font-size:7px">SIGN OUT</span></button>'
           : '<button id="rloginBtn" style="position:absolute;top:14px;left:14px;pointer-events:auto;background:rgba(255,1,0,0.12);border:1px solid #ff0100;color:#ff0100;font-family:\'Bebas Neue\',sans-serif;font-size:11px;letter-spacing:2px;padding:6px 10px;border-radius:6px;cursor:pointer;line-height:1">LOG IN</button>'
         )
-        // SYFER logo + credits widget — centered below login button
-        +'<div style="position:absolute;top:64px;left:0;width:68px;text-align:center;pointer-events:none">'
-          +'<img src="img/misc/syfer-logo-white.png" style="width:36px;height:auto;display:block;margin:0 auto;opacity:0.85">'
-          +'<div style="font-family:\'Bebas Neue\',sans-serif;font-size:12px;letter-spacing:1px;color:#ff0100;line-height:1;margin-top:4px">'+credits+'</div>'
-          +'<div style="font-size:6px;letter-spacing:1.5px;color:#444;line-height:1.4;text-transform:uppercase">CREDITS</div>'
-        +'</div>'
+        // SYFER credits moved into selections panel
         // icon buttons absolutely positioned top-right
         +'<div style="position:absolute;top:14px;right:14px;display:flex;flex-direction:column;gap:8px">'
           +'<button id="rhtpBtn" style="pointer-events:auto;background:rgba(255,255,255,0.06);border:1px solid #2a2a2a;color:#666;width:34px;height:34px;border-radius:8px;font-size:15px;cursor:pointer;line-height:1" title="How to Play">?</button>'
@@ -4409,14 +4448,22 @@ function boot(){
       +'</div>'
       // ── SELECTIONS PANEL ──
       +'<div style="background:rgba(0,0,0,0.50);border:1px solid rgba(255,255,255,0.05);border-radius:10px;padding:12px 18px 14px;margin:12px 16px 0;text-align:center">'
+        +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.05)">'
+          +'<div style="font-family:\'Bebas Neue\',sans-serif;font-size:9px;letter-spacing:3px;color:#333">SYFER CREDITS</div>'
+          +'<div style="font-family:\'Bebas Neue\',sans-serif;font-size:14px;letter-spacing:1px;color:#ff0100">'+credits+'</div>'
+        +'</div>'
         +lbl('DRIVER')
         +'<input id="rname" maxlength="12" placeholder="ENTER USERNAME" value="'+esc(playerName)+'" style="pointer-events:auto;background:rgba(255,255,255,0.06);border:1px solid #2a2a2a;color:#fff;font-family:\'Bebas Neue\',sans-serif;font-size:17px;letter-spacing:3px;text-align:center;text-transform:uppercase;padding:7px 12px;border-radius:5px;width:190px;outline:none">'
         +lbl('CAR')
-        +selRow('car-','car+',(carLock?'🔒 '+cd.need.toLocaleString():cd.name),carLock)
-        +'<div style="margin-top:8px;text-align:center">'
-        +'<button id="rcustomize" style="pointer-events:auto;background:rgba(255,1,0,0.08);border:1px solid rgba(255,1,0,0.35);color:#ff4444;font-family:\'Bebas Neue\',sans-serif;font-size:12px;letter-spacing:3px;padding:7px 20px;border-radius:6px;cursor:pointer">🎨 CUSTOMIZE CAR</button>'
-        +'</div>'+lbl('TRACK')
-        +selRow('bg-','bg+',(bgLock?'🔒 '+bd.need.toLocaleString():bd.name.toUpperCase()),bgLock)
+        +selRow('car-','car+',(carLock?'🔒 '+cd.sc.toLocaleString()+' SC':cd.name),carLock)
+        +(carLock
+          ? '<div style="margin-top:6px;text-align:center"><button id="rbuycar" style="pointer-events:auto;background:'+(credits>=cd.sc?'#ff0100':'#1e1e1e')+';color:'+(credits>=cd.sc?'#fff':'#555')+';border:none;font-family:\'Bebas Neue\',sans-serif;font-size:12px;letter-spacing:3px;padding:7px 22px;border-radius:5px;cursor:'+(credits>=cd.sc?'pointer':'not-allowed')+'">BUY — '+cd.sc.toLocaleString()+' SC'+(credits>=cd.sc?'':' · NEED '+(cd.sc-credits).toLocaleString()+' MORE')+'</button></div>'
+          : '<div style="margin-top:8px;text-align:center"><button id="rcustomize" style="pointer-events:auto;background:rgba(255,1,0,0.08);border:1px solid rgba(255,1,0,0.35);color:#ff4444;font-family:\'Bebas Neue\',sans-serif;font-size:12px;letter-spacing:3px;padding:7px 20px;border-radius:6px;cursor:pointer">🎨 CUSTOMIZE CAR</button></div>'
+        )+lbl('TRACK')
+        +selRow('bg-','bg+',(bgLock?'🔒 '+bd.sc.toLocaleString()+' SC':bd.name.toUpperCase()),bgLock)
+        +(bgLock
+          ? '<div style="margin-top:6px;text-align:center"><button id="rbuybg" style="pointer-events:auto;background:'+(credits>=bd.sc?'#ff0100':'#1e1e1e')+';color:'+(credits>=bd.sc?'#fff':'#555')+';border:none;font-family:\'Bebas Neue\',sans-serif;font-size:12px;letter-spacing:3px;padding:7px 22px;border-radius:5px;cursor:'+(credits>=bd.sc?'pointer':'not-allowed')+'">BUY — '+bd.sc.toLocaleString()+' SC'+(credits>=bd.sc?'':' · NEED '+(bd.sc-credits).toLocaleString()+' MORE')+'</button></div>'
+          : '')
       +'</div>'
       // ── START BUTTON ──
       +'<div style="margin:12px 16px 0;text-align:center">'
@@ -4469,6 +4516,20 @@ function boot(){
     if(loginBtn) loginBtn.addEventListener('click', function(){ showAuthPanel('login'); });
     var custBtn = document.getElementById('rcustomize');
     if(custBtn) custBtn.addEventListener('click', function(){ showCustomize(); });
+    var buyCarBtn = document.getElementById('rbuycar');
+    if(buyCarBtn) buyCarBtn.addEventListener('click', function(){
+      if(credits >= CARS[selCar].sc && buyCar(selCar)){
+        localStorage.setItem('srvc_car', CARS[selCar].id);
+        buildStart();
+      }
+    });
+    var buyBgBtn = document.getElementById('rbuybg');
+    if(buyBgBtn) buyBgBtn.addEventListener('click', function(){
+      if(credits >= BGS[selBg].sc && buyBg(selBg)){
+        localStorage.setItem('srvc_bg', BGS[selBg].id);
+        buildStart();
+      }
+    });
     var soBtn = document.getElementById('rsignout');
     if(soBtn) soBtn.addEventListener('click', signOut);
     updateStartBtn();
@@ -4847,8 +4908,6 @@ function boot(){
     var rmg=document.getElementById('rmphgauge'); if(rmg) rmg.style.display='none';
     var s=Math.floor(score); var newBestUnlock=null;
     if(s>best){
-      for(var i=0;i<CARS.length;i++){ if(best<CARS[i].need && s>=CARS[i].need) newBestUnlock='Car: '+CARS[i].name; }
-      for(var i=0;i<BGS.length;i++){ if(best<BGS[i].need && s>=BGS[i].need) newBestUnlock='Track: '+BGS[i].name; }
       best=s; localStorage.setItem('srvc_best',s); saveProfileToDB();
     }
     var nm=(playerName&&playerName.trim())?playerName.trim().slice(0,12):'YOU';
@@ -4895,7 +4954,7 @@ function boot(){
       +'<div style="height:1px;background:linear-gradient(90deg,transparent,rgba(255,1,0,0.3),transparent);margin:0 0 14px"></div>'
       // new best / unlock callout
       +(newBestUnlock?'<div style="display:inline-flex;align-items:center;gap:8px;background:rgba(0,230,118,0.08);border:1px solid rgba(0,230,118,0.25);border-radius:6px;padding:8px 14px;margin-bottom:12px"><span style="font-size:16px">🔓</span><div style="text-align:left"><div style="font-family:\'Bebas Neue\',sans-serif;font-size:11px;letter-spacing:2px;color:#00e676">UNLOCKED</div><div style="font-size:10px;color:#00b050;margin-top:1px">'+esc(newBestUnlock)+'</div></div></div><br>':'')
-      +(nu&&!newBestUnlock?'<div style="font-size:9px;letter-spacing:1px;color:#333;margin-bottom:12px">NEXT UNLOCK: <span style="color:#ff0100">'+esc(nu.name.toUpperCase())+'</span> · '+Math.max(0,nu.need-s).toLocaleString()+' PTS AWAY</div>':'')
+      +(nu&&!newBestUnlock?'<div style="font-size:9px;letter-spacing:1px;color:#333;margin-bottom:12px">NEXT UNLOCK: <span style="color:#ff0100">'+esc(nu.name.toUpperCase())+'</span> · '+nu.need.toLocaleString()+' SC</div>':'')
       // leaderboard
       +'<div style="font-family:\'Bebas Neue\',sans-serif;font-size:10px;letter-spacing:3px;color:#2a2a2a;margin-bottom:6px;text-align:left;padding-left:2px">LOCAL TOP 5</div>'
       +'<div style="margin-bottom:16px">'+(rows||'<div style="color:#2a2a2a;font-size:10px;padding:12px">NO SCORES YET</div>')+'</div>'
@@ -4983,7 +5042,10 @@ function boot(){
   function startGame(){
     var nameEl=document.getElementById('rname'); if(nameEl) playerName=nameEl.value.slice(0,12);
     if(!playerName||!playerName.trim()){ if(nameEl){ nameEl.focus(); nameEl.style.borderColor='#ff0100'; } return; }
-    if(!carUnlocked(selCar)||!bgUnlocked(selBg)){ buildStart(); return; }
+    if(!carUnlocked(selCar)||!bgUnlocked(selBg)){
+      // Show brief message if trying to play locked content
+      buildStart(); return;
+    }
     localStorage.setItem('srvc_name', playerName.trim().slice(0,12));
     // Always close any open panel before starting
     var rhtpEl=document.getElementById('rhtp'); if(rhtpEl) rhtpEl.style.display='none';
