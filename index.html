@@ -2878,22 +2878,32 @@ function boot(){
 
   // Submit a score to Supabase (async, fire-and-forget)
   function addScore(nm, sc){
-    fetch(SB_URL+'/rest/v1/leaderboard', {
-      method:'POST',
-      headers:{
-        'apikey': SB_KEY,
-        'Authorization': 'Bearer '+SB_KEY,
-        'Content-Type': 'application/json',
-        'Prefer': 'return=minimal'
-      },
-      body: JSON.stringify({ username: nm, score: sc })
-    }).catch(function(e){ console.warn('Score submit failed:', e); });
-    // Also keep local copy so game-over screen renders instantly
+    // 1. Write to localStorage FIRST — game-over screen renders from this instantly
     var lb = JSON.parse(localStorage.getItem('srvc_lb')||'[]');
     lb.push({n:nm, s:sc, t:Date.now()});
     lb.sort(function(a,b){ return b.s-a.s; });
     lb = lb.slice(0,60);
     localStorage.setItem('srvc_lb', JSON.stringify(lb));
+
+    // 2. Fire Supabase submission in background — completely detached, never blocks
+    setTimeout(function(){
+      var ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+      var timer = ctrl ? setTimeout(function(){ ctrl.abort(); }, 4000) : null;
+      fetch(SB_URL+'/rest/v1/leaderboard', {
+        method:'POST',
+        headers:{
+          'apikey': SB_KEY,
+          'Authorization': 'Bearer '+SB_KEY,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=minimal'
+        },
+        body: JSON.stringify({ username: nm, score: sc }),
+        signal: ctrl ? ctrl.signal : undefined
+      })
+      .then(function(){ if(timer) clearTimeout(timer); })
+      .catch(function(e){ if(timer) clearTimeout(timer); console.warn('Score submit:', e.message); });
+    }, 0);
+
     return lb;
   }
 
