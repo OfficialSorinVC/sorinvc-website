@@ -3184,6 +3184,7 @@ function boot(){
   }
 
   // Local fallback for instant game-over screen (still reads localStorage)
+  function loadLB(){ try{ var a=JSON.parse(localStorage.getItem('srvc_lb')||'[]'); return a.map(function(e){return{n:e.n,s:e.s,t:e.t||0};}); }catch(e){ return []; } }
   function boardTop(period){ var lb=loadLB(), now=Date.now(); var cut=period==='day'?86400000:period==='week'?604800000:Infinity;
     var f=period==='all'?lb.slice():lb.filter(function(e){return now-e.t<=cut;}); f.sort(function(a,b){return b.s-a.s;}); return f.slice(0,3); }
 
@@ -4470,6 +4471,7 @@ function boot(){
 
   function endGame(){
     running=false;
+    try {
     var rhtpEl=document.getElementById('rhtp'); if(rhtpEl) rhtpEl.style.display='none';
     var rsc=document.getElementById('rsc'); if(rsc) rsc.style.display='none';
     var rmu=document.getElementById('rmult'); if(rmu) rmu.style.display='none';
@@ -4545,6 +4547,23 @@ function boot(){
     document.getElementById('rgb').addEventListener('click',buildStart);
     var nudgeBtn=document.getElementById('rnudge');
     if(nudgeBtn) nudgeBtn.addEventListener('click',function(){ showAuthPanel('signup'); });
+    } catch(err) {
+      // Safety net: if any JS error occurred, still show a basic game-over screen
+      console.error('endGame error:', err);
+      var sc2=document.getElementById('rsc2');
+      if(sc2){
+        sc2.innerHTML='<div style="text-align:center;padding:40px 20px">'
+          +'<div style="font-family:\'Bebas Neue\',sans-serif;font-size:24px;letter-spacing:4px;color:#fff;margin-bottom:20px">WRECKED</div>'
+          +'<button onclick="buildStart()" style="background:#ff0100;color:#fff;border:none;font-family:\'Bebas Neue\',sans-serif;font-size:16px;letter-spacing:4px;padding:13px 32px;border-radius:5px;cursor:pointer">PLAY AGAIN</button>'
+        +'</div>';
+        sc2.style.opacity='1';
+        sc2.style.transition='';
+        sc2.style.display='flex';
+        sc2.style.alignItems='center';
+        sc2.style.justifyContent='center';
+        sc2.style.background='rgba(4,4,6,0.96)';
+      }
+    }
   }
 
   var tx=0,ty=0;
