@@ -29,6 +29,7 @@
 <meta name="keywords" content="SorinVC, Chicago content creator, gamer, car enthusiast, SYFER brand, GTA 6 streamer, Twitch streamer Chicago, TikTok creator, hit and run survivor, Grace Automotive, SYFER clothing"/>
 <meta name="author" content="SorinVC"/>
 <meta name="robots" content="index, follow"/>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <link rel="sitemap" type="application/xml" title="Sitemap" href="/sitemap.xml"/>
 <link rel="canonical" href="https://www.sorinvc.com/"/>
 
@@ -2876,6 +2877,240 @@ function boot(){
   var SB_URL = 'https://fgcwapblelpbogkjmgge.supabase.co';
   var SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZnY3dhcGJsZWxwYm9na2ptZ2dlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI4NTU5MDIsImV4cCI6MjA5ODQzMTkwMn0.3tRYADa8NtiMLrnYYrSTTZ-dbj6oC9HTioqF9gnNbwE';
 
+  // ── PLAYER AUTH — username + password, no email needed ──
+  // Uses our own 'players' table in Supabase, bypasses Supabase Auth entirely
+
+  // Current signed-in player row (null = guest)
+  var sbUser = null; // { id, username, best_score, sel_car, sel_bg, sel_color }
+
+  // Simple hash — combines username + password for a consistent lookup key
+  function hashPass(username, password){
+    var str = username.toLowerCase() + '::' + password;
+    var h = 0;
+    for(var i = 0; i < str.length; i++){
+      h = Math.imul(31, h) + str.charCodeAt(i) | 0;
+    }
+    // Return as unsigned hex string
+    return (h >>> 0).toString(16).padStart(8,'0') + str.length.toString(16);
+  }
+
+  // Init — restore session from localStorage if they logged in before
+  function initAuth(callback){
+    var saved = localStorage.getItem('srvc_session');
+    if(!saved){ callback(); return; }
+    try {
+      var session = JSON.parse(saved);
+      // Re-verify session still exists in DB
+      fetch(SB_URL+'/rest/v1/players?select=*&id=eq.'+encodeURIComponent(session.id), {
+        headers:{ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY }
+      })
+      .then(function(r){ return r.json(); })
+      .then(function(rows){
+        if(rows && rows.length){
+          sbUser = rows[0];
+          applyProfile();
+        }
+        callback();
+      })
+      .catch(function(){ callback(); });
+    } catch(e){ callback(); }
+  }
+
+  // Apply loaded profile data to game state
+  function applyProfile(){
+    if(!sbUser) return;
+    playerName = sbUser.username;
+    localStorage.setItem('srvc_name', playerName);
+    if(sbUser.best_score > best){ best = sbUser.best_score; localStorage.setItem('srvc_best', best); }
+    if(sbUser.sel_car){ var ci = CARS.findIndex(function(c){ return c.id===sbUser.sel_car; }); if(ci>=0) selCar=ci; }
+    if(sbUser.sel_bg){ var bi = BGS.findIndex(function(b){ return b.id===sbUser.sel_bg; }); if(bi>=0) selBg=bi; }
+    if(typeof sbUser.sel_color === 'number') selColor = sbUser.sel_color;
+  }
+
+  // Save progress to players table
+  function saveProfileToDB(){
+    if(!sbUser) return;
+    fetch(SB_URL+'/rest/v1/players?id=eq.'+encodeURIComponent(sbUser.id), {
+      method: 'PATCH',
+      headers:{
+        'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY,
+        'Content-Type':'application/json', 'Prefer':'return=minimal'
+      },
+      body: JSON.stringify({
+        best_score: best,
+        sel_car: CARS[selCar] ? CARS[selCar].id : 'sports',
+        sel_bg: BGS[selBg] ? BGS[selBg].id : 'night',
+        sel_color: selColor,
+        updated_at: new Date().toISOString()
+      })
+    }).catch(function(e){ console.warn('Profile save:', e); });
+  }
+
+  // Kept for compatibility
+  function loadProfileFromDB(callback){ callback(); }
+
+  // ── AUTH UI HELPERS ──
+  function showAuthPanel(mode){
+    var panel = document.getElementById('rhtp');
+    if(!panel) return;
+    var isLogin = (mode === 'login');
+
+    panel.innerHTML =
+      '<div style="max-width:340px;margin:0 auto;padding:32px 20px 48px">'+
+      '<div style="text-align:center;margin-bottom:24px">'+
+        '<div style="font-family:\'Bebas Neue\',sans-serif;font-size:28px;letter-spacing:3px;color:#fff">'+(isLogin?'SIGN IN':'CREATE ACCOUNT')+'</div>'+
+        '<div style="width:48px;height:2px;background:#ff0100;border-radius:1px;margin:6px auto 0"></div>'+
+        (isLogin?'':'<div style="font-size:10px;letter-spacing:2px;color:#444;margin-top:10px">TRACK PROGRESS · SAVE UNLOCKS · COMPETE</div>')+
+      '</div>'+
+
+      '<div style="display:flex;flex-direction:column;gap:12px">'+
+        '<div>'+
+          '<div style="font-family:\'Bebas Neue\',sans-serif;font-size:10px;letter-spacing:3px;color:#555;margin-bottom:5px">USERNAME</div>'+
+          '<input id="auth-user" type="text" maxlength="12" placeholder="UP TO 12 CHARACTERS" style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.05);border:1px solid #2a2a2a;color:#fff;font-family:\'Bebas Neue\',sans-serif;font-size:15px;letter-spacing:2px;text-transform:uppercase;padding:10px 12px;border-radius:5px;outline:none;pointer-events:auto">'+
+        '</div>'+
+        '<div>'+
+          '<div style="font-family:\'Bebas Neue\',sans-serif;font-size:10px;letter-spacing:3px;color:#555;margin-bottom:5px">PASSWORD</div>'+
+          '<div style="position:relative">'+'<input id="auth-pass" type="password" placeholder="••••••••" style="width:100%;box-sizing:border-box;background:rgba(255,255,255,0.05);border:1px solid #2a2a2a;color:#fff;font-size:14px;padding:10px 40px 10px 12px;border-radius:5px;outline:none;pointer-events:auto">'+'<button id="auth-pass-toggle" type="button" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;color:#555;cursor:pointer;font-size:13px;pointer-events:auto;padding:0;line-height:1">SHOW</button>'+'</div>'+
+        '</div>'+
+        '<div id="auth-err" style="font-size:10px;color:#ff4444;letter-spacing:1px;text-align:center;min-height:14px"></div>'+
+        '<button id="auth-submit" style="width:100%;background:#ff0100;color:#fff;border:none;font-family:\'Bebas Neue\',sans-serif;font-size:16px;letter-spacing:4px;padding:13px;border-radius:5px;cursor:pointer;pointer-events:auto">'+(isLogin?'SIGN IN':'CREATE ACCOUNT')+'</button>'+
+        '<button id="auth-switch" style="background:none;border:none;color:#444;font-size:10px;letter-spacing:2px;cursor:pointer;pointer-events:auto;text-decoration:underline">'+(isLogin?'NO ACCOUNT YET? CREATE ONE':'ALREADY HAVE AN ACCOUNT? SIGN IN')+'</button>'+
+        '<button id="auth-guest" style="background:none;border:1px solid #1a1a1a;color:#333;font-family:\'Bebas Neue\',sans-serif;font-size:12px;letter-spacing:3px;padding:9px;border-radius:5px;cursor:pointer;pointer-events:auto">CONTINUE AS GUEST</button>'+
+      '</div>'+
+      '</div>';
+
+    panel.style.display='block';
+
+    // Wire inputs — prevent game key capture
+    ['auth-user','auth-pass'].forEach(function(id){
+      var el = document.getElementById(id);
+      if(el) el.addEventListener('keydown', function(e){ e.stopPropagation(); });
+    });
+    var toggleBtn = document.getElementById('auth-pass-toggle');
+    var passInput = document.getElementById('auth-pass');
+    if(toggleBtn && passInput){
+      toggleBtn.addEventListener('click', function(){
+        if(passInput.type === 'password'){
+          passInput.type = 'text';
+          toggleBtn.textContent = 'HIDE';
+          toggleBtn.style.color = '#ff0100';
+        } else {
+          passInput.type = 'password';
+          toggleBtn.textContent = 'SHOW';
+          toggleBtn.style.color = '#555';
+        }
+      });
+    }
+
+    document.getElementById('auth-submit').addEventListener('click', function(){
+      submitAuth(isLogin);
+    });
+    document.getElementById('auth-switch').addEventListener('click', function(){
+      panel.style.display='none';
+      showAuthPanel(isLogin?'signup':'login');
+    });
+    document.getElementById('auth-guest').addEventListener('click', function(){
+      panel.style.display='none';
+      buildStart();
+    });
+
+    // Submit on Enter
+    document.getElementById('auth-pass').addEventListener('keydown', function(e){
+      if(e.key==='Enter') submitAuth(isLogin);
+    });
+  }
+
+  function submitAuth(isLogin){
+    var userEl = document.getElementById('auth-user');
+    var passEl = document.getElementById('auth-pass');
+    var errEl  = document.getElementById('auth-err');
+    var btn    = document.getElementById('auth-submit');
+    if(!userEl||!passEl||!errEl||!btn) return;
+
+    var username = userEl.value.trim().slice(0,12).toUpperCase();
+    var password = passEl.value;
+
+    if(username.length < 2){ errEl.textContent='USERNAME MUST BE AT LEAST 2 CHARACTERS'; return; }
+    if(password.length < 6){ errEl.textContent='PASSWORD MUST BE AT LEAST 6 CHARACTERS'; return; }
+
+    btn.textContent = 'LOADING...';
+    btn.disabled = true;
+    errEl.textContent = '';
+
+    var passHash = hashPass(username, password);
+
+    if(isLogin){
+      // Sign in — look up by username + password hash
+      fetch(SB_URL+'/rest/v1/players?select=*&username=eq.'+encodeURIComponent(username)+'&pass_hash=eq.'+encodeURIComponent(passHash), {
+        headers:{ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY }
+      })
+      .then(function(r){ return r.json(); })
+      .then(function(rows){
+        if(!rows || !rows.length){
+          errEl.textContent = 'WRONG USERNAME OR PASSWORD';
+          btn.textContent = 'SIGN IN'; btn.disabled = false; return;
+        }
+        sbUser = rows[0];
+        localStorage.setItem('srvc_session', JSON.stringify({ id: sbUser.id }));
+        applyProfile();
+        document.getElementById('rhtp').style.display='none';
+        buildStart();
+      })
+      .catch(function(){
+        errEl.textContent = 'ERROR — TRY AGAIN';
+        btn.textContent = 'SIGN IN'; btn.disabled = false;
+      });
+    } else {
+      // Sign up — check username isn't taken, then insert
+      fetch(SB_URL+'/rest/v1/players?select=id&username=eq.'+encodeURIComponent(username), {
+        headers:{ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY }
+      })
+      .then(function(r){ return r.json(); })
+      .then(function(existing){
+        if(existing && existing.length){
+          errEl.textContent = 'USERNAME ALREADY TAKEN';
+          btn.textContent = 'CREATE ACCOUNT'; btn.disabled = false; return;
+        }
+        // Insert new player
+        return fetch(SB_URL+'/rest/v1/players', {
+          method:'POST',
+          headers:{
+            'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY,
+            'Content-Type':'application/json', 'Prefer':'return=representation'
+          },
+          body: JSON.stringify({
+            username: username,
+            pass_hash: passHash,
+            best_score: best,
+            sel_car: CARS[selCar] ? CARS[selCar].id : 'sports',
+            sel_bg: BGS[selBg] ? BGS[selBg].id : 'night',
+            sel_color: selColor
+          })
+        })
+        .then(function(r){ return r.json(); })
+        .then(function(rows){
+          if(!rows || !rows.length){ throw new Error('Insert failed'); }
+          sbUser = rows[0];
+          localStorage.setItem('srvc_session', JSON.stringify({ id: sbUser.id }));
+          playerName = username;
+          localStorage.setItem('srvc_name', playerName);
+          document.getElementById('rhtp').style.display='none';
+          buildStart();
+        });
+      })
+      .catch(function(e){
+        errEl.textContent = 'ERROR — TRY AGAIN';
+        btn.textContent = 'CREATE ACCOUNT'; btn.disabled = false;
+      });
+    }
+  }
+
+  function signOut(){
+    sbUser = null;
+    localStorage.removeItem('srvc_session');
+    buildStart();
+  }
+
   // Submit a score to Supabase (async, fire-and-forget)
   function addScore(nm, sc){
     // 1. Write to localStorage FIRST — game-over screen renders from this instantly
@@ -4030,7 +4265,7 @@ function boot(){
       // car preview area — just space that the idle canvas fills below the UI
       +'<div style="flex:1"></div>';
 
-    sc.innerHTML=html; sc.style.display='flex'; sc.style.flexDirection='column'; sc.style.alignItems='stretch';
+    sc.innerHTML=html; sc.style.opacity='1'; sc.style.transition=''; sc.style.display='flex'; sc.style.flexDirection='column'; sc.style.alignItems='stretch';
 
     var ne=document.getElementById('rname');
     ne.addEventListener('input',function(){ playerName=ne.value.slice(0,12); updateStartBtn(); });
@@ -4051,6 +4286,29 @@ function boot(){
     }); });
     document.getElementById('rhtpBtn').addEventListener('click',function(){ showHowToPlay(); });
     document.getElementById('rlbBtn').addEventListener('click',function(){ showLeaderboard(); });
+    // Inject sign in / sign out button next to leaderboard button
+    var lbBtnEl = document.getElementById('rlbBtn');
+    if(lbBtnEl && lbBtnEl.parentNode){
+      var authBtn = document.createElement('button');
+      if(sbUser){
+        authBtn.id='rsignout';
+        authBtn.title='Sign Out ('+playerName+')';
+        authBtn.textContent='OUT';
+        authBtn.style.cssText='background:rgba(255,255,255,0.03);border:1px solid #1a1a1a;color:#333;font-family:\'Bebas Neue\',sans-serif;font-size:8px;letter-spacing:2px;padding:4px 7px;border-radius:6px;cursor:pointer;pointer-events:auto';
+        authBtn.addEventListener('click', signOut);
+      } else {
+        authBtn.id='rsignin';
+        authBtn.title='Log In';
+        authBtn.textContent='LOG IN';
+        authBtn.style.cssText='background:rgba(255,1,0,0.08);border:1px solid rgba(255,1,0,0.2);color:#ff4444;font-family:\'Bebas Neue\',sans-serif;font-size:8px;letter-spacing:2px;padding:4px 7px;border-radius:6px;cursor:pointer;pointer-events:auto';
+        authBtn.addEventListener('click', function(){ showAuthPanel('login'); });
+      }
+      lbBtnEl.parentNode.appendChild(authBtn);
+    }
+    var soBtn=document.getElementById('rsignout');
+    if(soBtn) soBtn.addEventListener('click',function(){ signOut(); });
+    var siBtn=document.getElementById('rsignin');
+    if(siBtn) siBtn.addEventListener('click',function(){ showAuthPanel('login'); });
     updateStartBtn();
     drawIdle();
   }
@@ -4208,7 +4466,7 @@ function boot(){
     if(s>best){
       for(var i=0;i<CARS.length;i++){ if(best<CARS[i].need && s>=CARS[i].need) newBestUnlock='Car: '+CARS[i].name; }
       for(var i=0;i<BGS.length;i++){ if(best<BGS[i].need && s>=BGS[i].need) newBestUnlock='Track: '+BGS[i].name; }
-      best=s; localStorage.setItem('srvc_best',s);
+      best=s; localStorage.setItem('srvc_best',s); saveProfileToDB();
     }
     var nm=(playerName&&playerName.trim())?playerName.trim().slice(0,12):'YOU';
     if(playerName) localStorage.setItem('srvc_name',nm);
@@ -4262,11 +4520,18 @@ function boot(){
         +'<button id="rrb" style="background:#ff0100;color:#fff;border:none;font-family:\'Bebas Neue\',sans-serif;font-size:16px;letter-spacing:4px;padding:13px 32px;border-radius:5px;cursor:pointer;pointer-events:auto;box-shadow:0 0 20px rgba(255,1,0,0.3);flex:1;max-width:160px">PLAY AGAIN</button>'
         +'<button id="rgb" style="background:rgba(255,255,255,0.05);color:#666;border:1px solid #222;font-family:\'Bebas Neue\',sans-serif;font-size:16px;letter-spacing:4px;padding:13px 24px;border-radius:5px;cursor:pointer;pointer-events:auto;flex:1;max-width:140px">GARAGE</button>'
       +'</div>'
+      // Create account nudge for guests
+      +(!sbUser?'<div id="auth-nudge" style="margin-top:14px;background:rgba(255,1,0,0.06);border:1px solid rgba(255,1,0,0.2);border-radius:6px;padding:10px 14px;text-align:center">'
+        +'<div style="font-family:\'Bebas Neue\',sans-serif;font-size:10px;letter-spacing:3px;color:#ff0100;margin-bottom:5px">YOUR PROGRESS WON\'T BE SAVED</div>'
+        +'<button id="rnudge" style="background:#ff0100;color:#fff;border:none;font-family:\'Bebas Neue\',sans-serif;font-size:13px;letter-spacing:3px;padding:8px 20px;border-radius:5px;cursor:pointer;pointer-events:auto">CREATE ACCOUNT TO TRACK PROGRESS</button>'
+      +'</div>':'')
     +'</div>';
 
-    sc.innerHTML=html; sc.style.display='flex';
+    sc.innerHTML=html; sc.style.opacity='1'; sc.style.transition=''; sc.style.display='flex';
     document.getElementById('rrb').addEventListener('click',startGame);
     document.getElementById('rgb').addEventListener('click',buildStart);
+    var nudgeBtn=document.getElementById('rnudge');
+    if(nudgeBtn) nudgeBtn.addEventListener('click',function(){ showAuthPanel('signup'); });
   }
 
   var tx=0,ty=0;
@@ -4342,7 +4607,14 @@ function boot(){
     },340);
   }
 
-  requestAnimationFrame(function(){ sizeCanvas(); buildStart(); });
+  requestAnimationFrame(function(){
+    sizeCanvas();
+    initAuth(function(){
+      // If no session, show auth panel; guest can skip
+      if(!sbUser){ showAuthPanel('login'); }
+      else { buildStart(); }
+    });
+  });
 
   document.addEventListener('keydown',function(e){ if(!running)return;
     if(e.key==='ArrowLeft'||e.key==='a'||e.key==='A')changeLane(-1);
