@@ -3011,6 +3011,7 @@ function boot(){
     });
     document.getElementById('auth-guest').addEventListener('click', function(){
       panel.style.display='none';
+      panel.innerHTML='';
       buildStart();
     });
 
@@ -3039,39 +3040,42 @@ function boot(){
 
     var passHash = hashPass(username, password);
 
+    function showErr(msg, btnLabel){
+      errEl.textContent = msg;
+      btn.textContent = btnLabel; btn.disabled = false;
+    }
+
     if(isLogin){
-      // Sign in — look up by username + password hash
       fetch(SB_URL+'/rest/v1/players?select=*&username=eq.'+encodeURIComponent(username)+'&pass_hash=eq.'+encodeURIComponent(passHash), {
         headers:{ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY }
       })
-      .then(function(r){ return r.json(); })
+      .then(function(r){
+        if(!r.ok){ return r.json().then(function(e){ throw new Error(e.message||('HTTP '+r.status)); }); }
+        return r.json();
+      })
       .then(function(rows){
-        if(!rows || !rows.length){
-          errEl.textContent = 'WRONG USERNAME OR PASSWORD';
-          btn.textContent = 'SIGN IN'; btn.disabled = false; return;
-        }
+        if(!rows || !rows.length){ showErr('WRONG USERNAME OR PASSWORD','SIGN IN'); return; }
         sbUser = rows[0];
         localStorage.setItem('srvc_session', JSON.stringify({ id: sbUser.id }));
         applyProfile();
         document.getElementById('rhtp').style.display='none';
         buildStart();
       })
-      .catch(function(){
-        errEl.textContent = 'ERROR — TRY AGAIN';
-        btn.textContent = 'SIGN IN'; btn.disabled = false;
-      });
+      .catch(function(e){ showErr((e&&e.message?e.message.toUpperCase().slice(0,60):'CONNECTION ERROR'),'SIGN IN'); });
+
     } else {
-      // Sign up — check username isn't taken, then insert
+      // Step 1: check username not taken
       fetch(SB_URL+'/rest/v1/players?select=id&username=eq.'+encodeURIComponent(username), {
         headers:{ 'apikey':SB_KEY, 'Authorization':'Bearer '+SB_KEY }
       })
-      .then(function(r){ return r.json(); })
+      .then(function(r){
+        if(!r.ok){ return r.json().then(function(e){ throw new Error(e.message||e.hint||('HTTP '+r.status)); }); }
+        return r.json();
+      })
       .then(function(existing){
-        if(existing && existing.length){
-          errEl.textContent = 'USERNAME ALREADY TAKEN';
-          btn.textContent = 'CREATE ACCOUNT'; btn.disabled = false; return;
-        }
-        // Insert new player
+        if(existing && existing.length){ showErr('USERNAME ALREADY TAKEN','CREATE ACCOUNT'); return; }
+
+        // Step 2: insert new player, get back the row
         return fetch(SB_URL+'/rest/v1/players', {
           method:'POST',
           headers:{
@@ -3087,10 +3091,21 @@ function boot(){
             sel_color: selColor
           })
         })
-        .then(function(r){ return r.json(); })
+        .then(function(r){
+          // Read body regardless of status so we can show the real error
+          return r.json().then(function(body){
+            if(!r.ok){
+              var msg = body.message || body.hint || body.details || body.code || ('HTTP '+r.status);
+              throw new Error(msg);
+            }
+            return body;
+          });
+        })
         .then(function(rows){
-          if(!rows || !rows.length){ throw new Error('Insert failed'); }
-          sbUser = rows[0];
+          // rows may be array or single object depending on Supabase version
+          var row = Array.isArray(rows) ? rows[0] : rows;
+          if(!row || !row.id){ throw new Error('No row returned — check players table exists in Supabase'); }
+          sbUser = row;
           localStorage.setItem('srvc_session', JSON.stringify({ id: sbUser.id }));
           playerName = username;
           localStorage.setItem('srvc_name', playerName);
@@ -3098,10 +3113,7 @@ function boot(){
           buildStart();
         });
       })
-      .catch(function(e){
-        errEl.textContent = 'ERROR — TRY AGAIN';
-        btn.textContent = 'CREATE ACCOUNT'; btn.disabled = false;
-      });
+      .catch(function(e){ showErr((e&&e.message?e.message.toUpperCase().slice(0,80):'CONNECTION ERROR'),'CREATE ACCOUNT'); });
     }
   }
 
@@ -4458,6 +4470,7 @@ function boot(){
 
   function endGame(){
     running=false;
+    var rhtpEl=document.getElementById('rhtp'); if(rhtpEl) rhtpEl.style.display='none';
     var rsc=document.getElementById('rsc'); if(rsc) rsc.style.display='none';
     var rmu=document.getElementById('rmult'); if(rmu) rmu.style.display='none';
     var rhl=document.getElementById('rhudleft'); if(rhl) rhl.style.display='none';
@@ -4584,6 +4597,8 @@ function boot(){
     if(!playerName||!playerName.trim()){ if(nameEl){ nameEl.focus(); nameEl.style.borderColor='#ff0100'; } return; }
     if(!carUnlocked(selCar)||!bgUnlocked(selBg)){ buildStart(); return; }
     localStorage.setItem('srvc_name', playerName.trim().slice(0,12));
+    // Always close any open panel before starting
+    var rhtpEl=document.getElementById('rhtp'); if(rhtpEl) rhtpEl.style.display='none';
     // Flash transition — red wipe then go
     var sc=document.getElementById('rsc2');
     sc.style.transition='opacity 0.18s ease-in';
